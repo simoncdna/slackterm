@@ -193,6 +193,38 @@ mod tests {
         assert!(text.contains("▸ 🧰 Tooling 1"), "{text}");
     }
 
+    #[test]
+    fn sidebar_tabs_switch_to_private_messages() {
+        let mut app = sample_app();
+        app.channel_mut("D1").unwrap().mentions = 2;
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("Canaux │ Privés 2"), "{text}");
+
+        app.sidebar_tab = crate::config::SidebarTab::Direct;
+        app.channel_mut("D1").unwrap().mentions = 0;
+        app.channel_mut("D1").unwrap().listed = true;
+        app.channel_mut("D1").unwrap().latest = "1700000000.000000".into();
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("@ camille"), "{text}");
+        assert!(!text.contains("# deploys"), "{text}");
+    }
+
+    #[test]
+    fn status_hints_never_cover_the_breadcrumb() {
+        let mut app = sample_app();
+        for width in [80, 100, 120, 160] {
+            for focus in [Focus::Sidebar, Focus::Messages] {
+                app.focus = focus;
+                let text = screen(&app, width, 20);
+                let status = text.lines().last().unwrap();
+                assert!(
+                    status.contains("acme › #general "),
+                    "{width} {focus:?}: {status}"
+                );
+            }
+        }
+    }
+
     /// `cargo test preview -- --ignored --nocapture` prints every layout.
     #[test]
     #[ignore = "aperçu visuel, à lancer à la main"]

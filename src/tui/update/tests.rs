@@ -595,3 +595,47 @@ fn going_up_from_the_oldest_message_loads_older_ones() {
     // The same message stays selected although indices shifted.
     assert_eq!(app.selected, Some(1));
 }
+
+#[test]
+fn the_private_tab_lists_direct_messages_by_recency() {
+    let mut app = app();
+    update(&mut app, conversations());
+    update(&mut app, counts());
+    update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "D2".into(),
+            message: message("9.0", "U3", "salut"),
+        }),
+    );
+
+    let commands = update(&mut app, key(KeyCode::Right));
+    assert_eq!(app.sidebar_tab, SidebarTab::Direct);
+    assert!(
+        matches!(&commands[..], [Command::SaveSidebar(state)] if state.tab == SidebarTab::Direct)
+    );
+    assert_eq!(
+        app.sidebar_items(),
+        [
+            SidebarItem::Channel("D2".into()),
+            SidebarItem::Channel("D1".into()),
+        ]
+    );
+
+    update(&mut app, key(KeyCode::Enter));
+    assert_eq!(app.current.as_deref(), Some("D2"));
+
+    update(&mut app, key(KeyCode::Char('1')));
+    update(&mut app, key(KeyCode::Left));
+    assert_eq!(app.sidebar_tab, SidebarTab::Channels);
+    assert!(
+        app.sidebar_items()
+            .contains(&SidebarItem::Channel("C1".into()))
+    );
+}
+
+#[test]
+fn switching_to_the_current_tab_does_nothing() {
+    let mut app = loaded_app();
+    assert!(update(&mut app, key(KeyCode::Left)).is_empty());
+}

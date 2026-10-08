@@ -9,13 +9,14 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use crate::config::SidebarTab;
 use crate::slack::Message;
 use crate::slack::emoji;
 use crate::slack::mrkdwn::{self, Kind};
 use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow};
 use crate::tui::theme::Theme;
 
-use super::text::{Styled, align_right, day_label, local_time, truncate, wrap};
+use super::text::{Styled, align_right, day_label, local_time, recency_label, truncate, wrap};
 
 /// Consecutive messages from the same author within this delay share a header.
 const GROUPING_SECONDS: i64 = 300;
@@ -398,7 +399,15 @@ pub fn sidebar(
         frame.render_widget(Paragraph::new(text), area);
         return;
     }
+    let [tabs_area, area] =
+        Layout::vertical([Constraint::Length(2), Constraint::Fill(1)]).areas(area);
+    frame.render_widget(
+        Paragraph::new(tab_bar(app, theme, tabs_area.width as usize)),
+        tabs_area,
+    );
+
     let width = area.width as usize;
+    let today = Local::now().date_naive();
     let sidebar_rows = app.sidebar_rows();
     let cursor_row = app.sidebar_position(&app.sidebar_items());
     let mut rows: Vec<Line> = Vec::with_capacity(sidebar_rows.len());
@@ -421,8 +430,14 @@ pub fn sidebar(
             ),
             SidebarRow::Channel(index) => {
                 number += 1;
+                let channel = &app.channels[index];
                 let number = (style == SidebarStyle::Numbered).then_some(number);
-                channel_row(app, theme, &app.channels[index], width, is_cursor, number)
+                // The private tab shows when each conversation was last active.
+                let when = (app.sidebar_tab == SidebarTab::Direct)
+                    .then(|| epoch_of(&channel.latest))
+                    .flatten()
+                    .map(|epoch| recency_label(local_time(epoch), today));
+                channel_row(app, theme, channel, width, is_cursor, number, when)
             }
         };
         rows.push(line);
@@ -434,6 +449,55 @@ pub fn sidebar(
         .min(rows.len().saturating_sub(height));
     let visible: Vec<Line> = rows.into_iter().skip(start).take(height).collect();
     frame.render_widget(Paragraph::new(visible), area);
+}
+
+fn epoch_of(ts: &str) -> Option<i64> {
+    ts.split('.').next()?.parse().ok().filter(|&secs| secs > 0)
+}
+
+/// `Canaux │ Privés`, the active tab underlined, the other one badged when
+/// it holds unread conversations.
+fn tab_bar(app: &App, theme: &Theme, width: usize) -> Vec<Line<'static>> {
+    let mut labels = Vec::new();
+    let mut rule = Vec::new();
+    let mut used = 0;
+    for (tab, name) in [
+        (SidebarTab::Channels, "Canaux"),
+        (SidebarTab::Direct, "Privés"),
+    ] {
+        if tab == SidebarTab::Direct {
+            labels.push(Span::styled(" │", Style::new().fg(theme.border)));
+            rule.push(Span::styled("─".repeat(2), Style::new().fg(theme.border)));
+            used += 2;
+        }
+        let active = app.sidebar_tab == tab;
+        let (unread, mentions) = app.tab_activity(tab);
+        let badge = match (active, mentions, unread) {
+            (true, _, _) | (false, 0, false) => String::new(),
+            (false, 0, true) => " •".to_string(),
+            (false, count, _) => format!(" {count}"),
+        };
+        let label = format!(" {name}");
+        let label_width = label.width() + badge.width();
+        let style = if active {
+            Style::new().fg(theme.accent).bold()
+        } else {
+            Style::new().fg(theme.muted)
+        };
+        labels.push(Span::styled(label, style));
+        labels.push(Span::styled(badge, Style::new().fg(theme.unread).bold()));
+        let rule_color = if active { theme.accent } else { theme.border };
+        rule.push(Span::styled(
+            "─".repeat(label_width),
+            Style::new().fg(rule_color),
+        ));
+        used += label_width;
+    }
+    rule.push(Span::styled(
+        "─".repeat(width.saturating_sub(used)),
+        Style::new().fg(theme.border),
+    ));
+    vec![Line::from(labels), Line::from(rule)]
 }
 
 fn section_row(
@@ -476,6 +540,7 @@ fn channel_row(
     width: usize,
     is_cursor: bool,
     number: Option<usize>,
+    when: Option<String>,
 ) -> Line<'static> {
     let is_current = app.current.as_deref() == Some(channel.id.as_str());
     let prefix = match channel.kind {
@@ -499,7 +564,7 @@ fn channel_row(
     } else if channel.unread {
         ("•".to_string(), Style::new().fg(theme.unread))
     } else {
-        (String::new(), Style::new())
+        (when.unwrap_or_default(), Style::new().fg(theme.muted))
     };
     let name_style = if is_current {
         Style::new().fg(theme.accent).bold()
@@ -519,7 +584,9 @@ fn channel_row(
             format!("{number:>2} "),
             Style::new().fg(theme.muted),
         )),
-        None => spans.push(Span::raw("  ")),
+        // Indented under the section headers of the channels tab.
+        None if app.sidebar_tab == SidebarTab::Channels => spans.push(Span::raw("  ")),
+        None => {}
     }
     let used: usize = spans.iter().map(|s| s.content.width()).sum();
     let room = width.saturating_sub(used + badge.width() + 1);
@@ -690,7 +757,7 @@ pub fn status_bar(
     } else {
         let mut used = 0;
         for (key, label) in hints(app) {
-            let width = key.width() + label.width() + 3;
+            let width = key.width() + label.width() + 4;
             if used + width > room {
                 break;
             }
@@ -721,7 +788,11 @@ fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
         ];
     }
     let mut hints = match app.focus {
-        Focus::Sidebar => vec![("j/k", "naviguer"), ("⏎", "ouvrir / replier")],
+        Focus::Sidebar => vec![
+            ("j/k", "naviguer"),
+            ("⏎", "ouvrir / replier"),
+            ("←→", "canaux / privés"),
+        ],
         Focus::Messages => vec![("j/k", "sélection"), ("t", "fil"), ("i", "écrire")],
         Focus::Thread => vec![("i", "répondre"), ("esc", "fermer le fil")],
     };

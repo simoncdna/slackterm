@@ -19,7 +19,7 @@ use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::config::Settings;
+use crate::config::{Settings, SidebarState};
 use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
 
@@ -38,6 +38,9 @@ pub async fn run(session: Session) -> Result<()> {
     };
     let mut app = App::new(workspace, settings);
     app.notice = settings_error;
+    let sidebar = SidebarState::load();
+    app.collapsed = sidebar.collapsed;
+    app.sidebar_tab = sidebar.tab;
 
     let (events_tx, mut events_rx) = mpsc::unbounded_channel();
     let (rtm_tx, mut rtm_rx) = mpsc::unbounded_channel();

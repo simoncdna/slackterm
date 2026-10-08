@@ -67,7 +67,13 @@ fn on_sidebar_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Char('k') | KeyCode::Up => position.saturating_sub(1),
         KeyCode::Char('g') | KeyCode::Home => 0,
         KeyCode::Char('G') | KeyCode::End => last,
-        KeyCode::Enter | KeyCode::Char('l') | KeyCode::Right | KeyCode::Char(' ') => {
+        KeyCode::Char('h') | KeyCode::Left | KeyCode::Char('[') => {
+            return switch_tab(app, SidebarTab::Channels);
+        }
+        KeyCode::Char('l') | KeyCode::Right | KeyCode::Char(']') => {
+            return switch_tab(app, SidebarTab::Direct);
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => {
             return match &items[position] {
                 SidebarItem::Section(id) => toggle_section(app, id),
                 SidebarItem::Channel(id) => {
@@ -88,9 +94,17 @@ fn toggle_section(app: &mut App, id: &str) -> Vec<Command> {
         app.collapsed.insert(id.to_string());
     }
     app.sidebar_cursor = Some(SidebarItem::Section(id.to_string()));
-    vec![Command::SaveSidebar(SidebarState {
-        collapsed: app.collapsed.clone(),
-    })]
+    vec![Command::SaveSidebar(app.sidebar_state())]
+}
+
+fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
+    if app.sidebar_tab == tab {
+        return Vec::new();
+    }
+    app.sidebar_tab = tab;
+    // Land on the open conversation if the tab lists it, else at the top.
+    app.sidebar_cursor = None;
+    vec![Command::SaveSidebar(app.sidebar_state())]
 }
 
 fn on_messages_key(app: &mut App, key: KeyEvent) -> Vec<Command> {

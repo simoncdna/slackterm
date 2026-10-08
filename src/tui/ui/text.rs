@@ -157,6 +157,23 @@ pub fn short_datetime(time: DateTime<Local>, today: NaiveDate) -> String {
     }
 }
 
+const SHORT_WEEKDAYS: [&str; 7] = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+
+/// How long ago a conversation was active: `14:02`, `hier`, `lun.`,
+/// `8 oct.`, then `déc. 2025`.
+pub fn recency_label(time: DateTime<Local>, today: NaiveDate) -> String {
+    let day = time.date_naive();
+    let days_ago = (today - day).num_days();
+    let month = SHORT_MONTHS[day.month0() as usize];
+    match days_ago {
+        ..=0 => time.format("%H:%M").to_string(),
+        1 => "hier".to_string(),
+        2..=6 => SHORT_WEEKDAYS[day.weekday().num_days_from_monday() as usize].to_string(),
+        _ if day.year() == today.year() => format!("{} {month}", day.day()),
+        _ => format!("{month} {}", day.year()),
+    }
+}
+
 /// Cuts styled text to `width` columns, ending with `…` when shortened.
 pub fn truncate_styled(segments: Vec<Styled>, width: usize) -> Vec<Styled> {
     let mut out = Vec::new();
@@ -218,6 +235,17 @@ mod tests {
         assert_eq!(short_datetime(at(2026, 10, 8), today), "10:02");
         assert_eq!(short_datetime(at(2026, 3, 2), today), "2 mars 10:02");
         assert_eq!(short_datetime(at(2025, 12, 1), today), "1 déc. 2025");
+    }
+
+    #[test]
+    fn labels_recency() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
+        let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 14, 2, 0).single().unwrap();
+        assert_eq!(recency_label(at(2026, 10, 8), today), "14:02");
+        assert_eq!(recency_label(at(2026, 10, 7), today), "hier");
+        assert_eq!(recency_label(at(2026, 10, 5), today), "lun.");
+        assert_eq!(recency_label(at(2026, 9, 2), today), "2 sept.");
+        assert_eq!(recency_label(at(2025, 12, 1), today), "déc. 2025");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use crate::config::{Layout, Settings};
+use crate::config::{Layout, Settings, SidebarState, SidebarTab};
 use crate::session::Workspace;
 use crate::slack::{
     ChannelSection, Conversation, ConversationCount, Message, SearchChannel, SearchMatch, User,
@@ -270,6 +270,7 @@ pub struct App {
     pub sections: Vec<Section>,
     /// Ids of the collapsed sections.
     pub collapsed: BTreeSet<String>,
+    pub sidebar_tab: SidebarTab,
     /// `None` until the user moves in the sidebar: it then follows the
     /// current channel.
     pub sidebar_cursor: Option<SidebarItem>,
@@ -308,6 +309,7 @@ impl App {
             current: None,
             sections: Section::defaults(),
             collapsed: BTreeSet::new(),
+            sidebar_tab: SidebarTab::Channels,
             sidebar_cursor: None,
             jump: None,
             histories: HashMap::new(),
@@ -436,9 +438,42 @@ impl App {
         explicit.or_else(|| self.sections.iter().position(|s| s.kind == fallback))
     }
 
-    /// The sidebar, top to bottom. Collapsed sections still show the
-    /// conversations that need attention, as the web client does.
+    /// The sidebar, top to bottom, for the selected tab.
     pub fn sidebar_rows(&self) -> Vec<SidebarRow> {
+        match self.sidebar_tab {
+            SidebarTab::Channels => self.section_rows(),
+            // `channels` already orders direct messages by recency.
+            SidebarTab::Direct => (0..self.channels.len())
+                .filter(|&i| {
+                    let channel = &self.channels[i];
+                    channel.is_direct() && self.is_listed(channel)
+                })
+                .map(SidebarRow::Channel)
+                .collect(),
+        }
+    }
+
+    /// Whether a tab holds unread conversations, and how many messages or
+    /// mentions await, to badge the tab that is not shown.
+    pub fn tab_activity(&self, tab: SidebarTab) -> (bool, u32) {
+        self.channels
+            .iter()
+            .filter(|c| c.is_direct() == (tab == SidebarTab::Direct))
+            .fold((false, 0), |(unread, mentions), c| {
+                (unread || c.unread, mentions + c.mentions)
+            })
+    }
+
+    pub fn sidebar_state(&self) -> SidebarState {
+        SidebarState {
+            collapsed: self.collapsed.clone(),
+            tab: self.sidebar_tab,
+        }
+    }
+
+    /// Sections with their conversations. Collapsed sections still show the
+    /// conversations that need attention, as the web client does.
+    fn section_rows(&self) -> Vec<SidebarRow> {
         let mut members: Vec<Vec<usize>> = vec![Vec::new(); self.sections.len()];
         for (index, channel) in self.channels.iter().enumerate() {
             let Some(section) = self.section_of(channel) else {

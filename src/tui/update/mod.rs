@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 
-use crate::config::{Choice, Layout, Settings, SidebarState};
+use crate::config::{Choice, Layout, Settings, SidebarState, SidebarTab};
 use crate::slack::rtm::RtmEvent;
 use crate::slack::{
     ChannelSection, Conversation, ConversationCount, Message, SearchMatch, User, mrkdwn,

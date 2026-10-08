@@ -135,11 +135,24 @@ impl Settings {
     }
 }
 
+/// The two lists the sidebar switches between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SidebarTab {
+    /// The user's sections, as in Slack's home.
+    #[default]
+    Channels,
+    /// Direct and group messages, most recent first.
+    Direct,
+}
+
 /// What the user changed in the sidebar, kept between launches.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SidebarState {
     #[serde(default)]
     pub collapsed: BTreeSet<String>,
+    #[serde(default)]
+    pub tab: SidebarTab,
 }
 
 impl SidebarState {
@@ -189,6 +202,20 @@ mod tests {
         let settings = Settings::from_toml("theme = \"nord\"").unwrap();
         assert_eq!(settings.theme, ThemeName::Nord);
         assert_eq!(settings.layout, Layout::Panels);
+    }
+
+    #[test]
+    fn sidebar_state_round_trips_through_toml() {
+        let state = SidebarState {
+            collapsed: ["S1".to_string()].into(),
+            tab: SidebarTab::Direct,
+        };
+        let toml = toml::to_string(&state).unwrap();
+        assert_eq!(toml::from_str::<SidebarState>(&toml).unwrap(), state);
+        assert_eq!(
+            toml::from_str::<SidebarState>("").unwrap(),
+            SidebarState::default()
+        );
     }
 
     #[test]
