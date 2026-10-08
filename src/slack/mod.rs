@@ -1,4 +1,5 @@
 mod client;
+pub mod emoji;
 pub mod mrkdwn;
 pub mod rtm;
 mod types;
