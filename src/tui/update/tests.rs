@@ -639,3 +639,121 @@ fn switching_to_the_current_tab_does_nothing() {
     let mut app = loaded_app();
     assert!(update(&mut app, key(KeyCode::Left)).is_empty());
 }
+
+fn react_with(app: &mut App, query: &str) -> Vec<Command> {
+    update(app, key(KeyCode::Char('r')));
+    typed(app, query);
+    update(app, key(KeyCode::Enter))
+}
+
+fn reactions(app: &App, ts: &str) -> Vec<(String, u32)> {
+    app.find_message("C1", ts)
+        .unwrap()
+        .reactions
+        .iter()
+        .map(|r| (r.name.clone(), r.count))
+        .collect()
+}
+
+#[test]
+fn r_opens_the_picker_on_the_selected_message() {
+    let mut app = loaded_app();
+    app.focus = Focus::Messages;
+    update(&mut app, key(KeyCode::Char('k')));
+    update(&mut app, key(KeyCode::Char('k')));
+    update(&mut app, key(KeyCode::Char('r')));
+    assert!(matches!(&app.overlay, Some(Overlay::Emoji(picker)) if picker.target.ts == "1.0"));
+}
+
+#[test]
+fn reacting_shows_the_reaction_at_once_and_a_second_time_removes_it() {
+    let mut app = loaded_app();
+    app.focus = Focus::Messages;
+
+    let commands = react_with(&mut app, ":tada");
+    assert_eq!(
+        commands,
+        [Command::React {
+            channel: "C1".into(),
+            ts: "2.0".into(),
+            name: "tada".into(),
+            add: true
+        }]
+    );
+    assert!(app.overlay.is_none());
+    assert_eq!(reactions(&app, "2.0"), [("tada".to_string(), 1)]);
+
+    let commands = react_with(&mut app, "tada");
+    assert!(matches!(&commands[..], [Command::React { add: false, .. }]));
+    assert!(reactions(&app, "2.0").is_empty());
+}
+
+#[test]
+fn a_refused_reaction_is_undone() {
+    let mut app = loaded_app();
+    app.focus = Focus::Messages;
+    react_with(&mut app, "tada");
+    update(
+        &mut app,
+        Event::Api(ApiEvent::ReactionFailed {
+            channel: "C1".into(),
+            ts: "2.0".into(),
+            name: "tada".into(),
+            added: true,
+            reason: "invalid_name".into(),
+        }),
+    );
+    assert!(reactions(&app, "2.0").is_empty());
+    assert!(
+        app.notice
+            .as_deref()
+            .is_some_and(|n| n.contains("invalid_name"))
+    );
+}
+
+#[test]
+fn the_picker_starts_with_the_most_used_reactions() {
+    let mut app = loaded_app();
+    let history = app.histories.get_mut("C1").unwrap();
+    history.messages[0].add_reaction("eyes", "U2");
+    history.messages[0].add_reaction("eyes", "U3");
+    history.messages[1].add_reaction("eyes", "U4");
+    let choices = app.emoji_choices("");
+    assert_eq!(choices[0].name, "eyes");
+    assert_eq!(choices[0].glyph.as_deref(), Some("👀"));
+    assert!(choices.iter().any(|c| c.name == "+1"));
+}
+
+#[test]
+fn the_picker_finds_standard_and_custom_emoji() {
+    let mut app = loaded_app();
+    app.custom_emoji = vec!["pictaheart".into()];
+    assert_eq!(app.emoji_choices("+1")[0].name, "+1");
+    assert_eq!(app.emoji_choices("thinking")[0].name, "thinking_face");
+    let custom = &app.emoji_choices("pictah")[0];
+    assert_eq!(custom.name, "pictaheart");
+    assert!(custom.glyph.is_none());
+}
+
+#[test]
+fn reactions_in_a_thread_go_to_the_selected_reply() {
+    let mut app = loaded_app();
+    app.histories.get_mut("C1").unwrap().messages[1].reply_count = 1;
+    app.focus = Focus::Messages;
+    update(&mut app, key(KeyCode::Char('t')));
+    let mut reply = message("3.0", "U2", "réponse");
+    reply.thread_ts = Some("2.0".into());
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Replies {
+            channel: "C1".into(),
+            ts: "2.0".into(),
+            messages: vec![message("2.0", "U2", "ça va ?"), reply],
+        }),
+    );
+    update(&mut app, key(KeyCode::Char('k')));
+    update(&mut app, key(KeyCode::Char('k')));
+    update(&mut app, key(KeyCode::Char('j')));
+    let commands = react_with(&mut app, "+1");
+    assert!(matches!(&commands[..], [Command::React { ts, .. }] if ts == "3.0"));
+}

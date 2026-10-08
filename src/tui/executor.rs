@@ -1,6 +1,6 @@
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::slack::SlackClient;
+use crate::slack::{SlackClient, SlackError};
 
 use super::update::{ApiEvent, Command, Event};
 
@@ -89,6 +89,39 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 .await
                 .map_err(|e| format!("marquer comme lu : {e}"))?;
             return Ok(None);
+        }
+        Command::LoadEmoji => match client.emoji_list().await {
+            Ok(emoji) => ApiEvent::CustomEmoji(emoji),
+            // Only custom emoji go missing from the picker.
+            Err(_) => return Ok(None),
+        },
+        Command::React {
+            channel,
+            ts,
+            name,
+            add,
+        } => {
+            let result = if add {
+                client.reactions_add(&channel, &ts, &name).await
+            } else {
+                client.reactions_remove(&channel, &ts, &name).await
+            };
+            match result {
+                // Already in the requested state: nothing to undo.
+                Ok(()) => return Ok(None),
+                Err(SlackError::Api(code))
+                    if code == "already_reacted" || code == "no_reaction" =>
+                {
+                    return Ok(None);
+                }
+                Err(e) => ApiEvent::ReactionFailed {
+                    channel,
+                    ts,
+                    name,
+                    added: add,
+                    reason: e.to_string(),
+                },
+            }
         }
         Command::SaveSidebar(state) => {
             state

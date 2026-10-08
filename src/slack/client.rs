@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use reqwest::StatusCode;
@@ -184,6 +185,42 @@ impl SlackClient {
         }
         let body = self.call_value("chat.postMessage", &params).await?;
         Ok(serde_json::from_value(body["message"].clone())?)
+    }
+
+    pub async fn reactions_add(
+        &self,
+        channel: &str,
+        ts: &str,
+        name: &str,
+    ) -> Result<(), SlackError> {
+        let params = vec![
+            ("channel", channel.into()),
+            ("timestamp", ts.into()),
+            ("name", name.into()),
+        ];
+        self.call_value("reactions.add", &params).await?;
+        Ok(())
+    }
+
+    pub async fn reactions_remove(
+        &self,
+        channel: &str,
+        ts: &str,
+        name: &str,
+    ) -> Result<(), SlackError> {
+        let params = vec![
+            ("channel", channel.into()),
+            ("timestamp", ts.into()),
+            ("name", name.into()),
+        ];
+        self.call_value("reactions.remove", &params).await?;
+        Ok(())
+    }
+
+    /// The workspace's custom emoji: name → image URL, or `alias:<name>`.
+    pub async fn emoji_list(&self) -> Result<HashMap<String, String>, SlackError> {
+        let body = self.call_value("emoji.list", &Vec::new()).await?;
+        Ok(serde_json::from_value(body["emoji"].clone())?)
     }
 
     pub async fn conversations_mark(&self, channel: &str, ts: &str) -> Result<(), SlackError> {

@@ -72,7 +72,20 @@ fn channel_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, sty
 
 fn thread_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, style: MessageStyle) {
     let Some(thread) = &app.thread else { return };
-    let rendered = message_lines(app, theme, &thread.messages, area.width, None, style, true);
+    let selected = if app.focus == Focus::Thread {
+        thread.selected
+    } else {
+        None
+    };
+    let rendered = message_lines(
+        app,
+        theme,
+        &thread.messages,
+        area.width,
+        selected,
+        style,
+        true,
+    );
     render_messages(frame, area, rendered, theme, !thread.loaded);
 }
 

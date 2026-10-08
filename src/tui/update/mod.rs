@@ -13,8 +13,8 @@ use crate::slack::{
 
 use super::input::Input;
 use super::state::{
-    App, Channel, Connection, Focus, History, Jump, Mode, Overlay, SETTINGS_ROWS, Search,
-    SearchStatus, SidebarItem, Thread,
+    App, Channel, Connection, EmojiPicker, Focus, History, Jump, Mode, Overlay, ReactionTarget,
+    SETTINGS_ROWS, Search, SearchStatus, SidebarItem, Thread,
 };
 
 // Events are few and short-lived; boxing the large variants would only add noise.
@@ -45,6 +45,15 @@ pub enum ApiEvent {
     SearchResults {
         query: String,
         result: Result<Vec<SearchMatch>, String>,
+    },
+    CustomEmoji(HashMap<String, String>),
+    /// Slack refused a reaction that was already shown: undo it.
+    ReactionFailed {
+        channel: String,
+        ts: String,
+        name: String,
+        added: bool,
+        reason: String,
     },
     Replies {
         channel: String,
@@ -87,6 +96,13 @@ pub enum Command {
     SaveSettings(Settings),
     SaveSidebar(SidebarState),
     Search(String),
+    LoadEmoji,
+    React {
+        channel: String,
+        ts: String,
+        name: String,
+        add: bool,
+    },
 }
 
 const PAGE: usize = 10;
@@ -99,6 +115,7 @@ pub fn initial_commands() -> Vec<Command> {
         Command::LoadConversations,
         Command::LoadCounts,
         Command::LoadSections,
+        Command::LoadEmoji,
     ]
 }
 
@@ -122,6 +139,7 @@ fn on_paste(app: &mut App, text: &str) {
             *cursor = 0;
         }
         Some(Overlay::Search(search)) => search.query.insert_str(&text.replace('\n', " ")),
+        Some(Overlay::Emoji(picker)) => picker.query.insert_str(text.trim()),
         Some(Overlay::Settings { .. }) => {}
         None if app.mode == Mode::Insert => app.input.insert_str(&text),
         None => {}
@@ -250,6 +268,31 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
         ApiEvent::CountsUnavailable => {
             app.counts_unavailable = true;
             app.apply_counts();
+            Vec::new()
+        }
+        ApiEvent::CustomEmoji(emoji) => {
+            app.custom_emoji = emoji.into_keys().collect();
+            app.custom_emoji.sort();
+            Vec::new()
+        }
+        ApiEvent::ReactionFailed {
+            channel,
+            ts,
+            name,
+            added,
+            reason,
+        } => {
+            let me = app.my_id.clone();
+            for messages in messages_of(app, &channel) {
+                if let Some(message) = messages.iter_mut().find(|m| m.ts == ts) {
+                    if added {
+                        message.remove_reaction(&name, &me);
+                    } else {
+                        message.add_reaction(&name, &me);
+                    }
+                }
+            }
+            app.notice = Some(format!("réaction :{name}: : {reason}"));
             Vec::new()
         }
         ApiEvent::Failed(reason) => {
@@ -478,6 +521,31 @@ fn try_jump(app: &mut App) -> Vec<Command> {
         app.notice = Some("message trop ancien, affichage du plus proche".into());
     }
     Vec::new()
+}
+
+/// Adds the reaction, or removes it if the user already reacted with it,
+/// showing the change right away.
+fn toggle_reaction(app: &mut App, target: &ReactionTarget, name: &str) -> Vec<Command> {
+    let me = app.my_id.clone();
+    let add = !app
+        .find_message(&target.channel, &target.ts)
+        .and_then(|m| m.reactions.iter().find(|r| r.name == name))
+        .is_some_and(|r| r.users.contains(&me));
+    for messages in messages_of(app, &target.channel) {
+        if let Some(message) = messages.iter_mut().find(|m| m.ts == target.ts) {
+            if add {
+                message.add_reaction(name, &me);
+            } else {
+                message.remove_reaction(name, &me);
+            }
+        }
+    }
+    vec![Command::React {
+        channel: target.channel.clone(),
+        ts: target.ts.clone(),
+        name: name.to_string(),
+        add,
+    }]
 }
 
 mod keys;

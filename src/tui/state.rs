@@ -1,4 +1,5 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
+use std::path::PathBuf;
 
 use crate::config::{Layout, Settings, SidebarState, SidebarTab};
 use crate::session::Workspace;
@@ -235,13 +236,58 @@ pub struct Thread {
     /// The parent first, then the replies.
     pub messages: Vec<Message>,
     pub loaded: bool,
+    /// Selected message; `None` follows the latest.
+    pub selected: Option<usize>,
 }
+
+/// The message a reaction goes to.
+#[derive(Debug, Clone)]
+pub struct ReactionTarget {
+    pub channel: String,
+    pub ts: String,
+    pub author: String,
+    pub text: String,
+}
+
+#[derive(Debug)]
+pub struct EmojiPicker {
+    pub query: Input,
+    pub cursor: usize,
+    pub target: ReactionTarget,
+}
+
+pub struct EmojiChoice {
+    /// The name sent to Slack.
+    pub name: String,
+    /// `None` for a custom emoji, which is an image.
+    pub glyph: Option<String>,
+    /// Char indices of `name` matching the query.
+    pub matched: Vec<usize>,
+}
+
+/// Offered while nothing is typed, after the user's most used ones.
+const DEFAULT_REACTIONS: [&str; 12] = [
+    "+1",
+    "heart",
+    "joy",
+    "tada",
+    "eyes",
+    "rocket",
+    "white_check_mark",
+    "pray",
+    "fire",
+    "100",
+    "clap",
+    "raised_hands",
+];
+const MAX_EMOJI_CHOICES: usize = 60;
 
 #[derive(Debug)]
 pub enum Overlay {
     Switcher { query: Input, cursor: usize },
     Settings { row: usize },
     Search(Search),
+    Emoji(EmojiPicker),
 }
 
 pub const SETTINGS_ROWS: usize = 3;
@@ -257,6 +303,8 @@ pub struct App {
     pub my_id: String,
     pub my_name: String,
     pub settings: Settings,
+    /// Where settings changes are saved, if they are.
+    pub settings_path: Option<PathBuf>,
     pub users: HashMap<String, User>,
     pub channels: Vec<Channel>,
     pub channels_loaded: bool,
@@ -275,6 +323,8 @@ pub struct App {
     /// current channel.
     pub sidebar_cursor: Option<SidebarItem>,
     pub jump: Option<Jump>,
+    /// Names of the workspace's custom emoji.
+    pub custom_emoji: Vec<String>,
     pub histories: HashMap<String, History>,
     /// Selected message in the current channel; `None` follows the latest.
     pub selected: Option<usize>,
@@ -300,6 +350,7 @@ impl App {
             my_id: workspace.user_id.clone(),
             my_name: workspace.user_name.clone(),
             settings,
+            settings_path: None,
             users: HashMap::new(),
             channels: Vec::new(),
             channels_loaded: false,
@@ -312,6 +363,7 @@ impl App {
             sidebar_tab: SidebarTab::Channels,
             sidebar_cursor: None,
             jump: None,
+            custom_emoji: Vec::new(),
             histories: HashMap::new(),
             selected: None,
             thread: None,
@@ -590,6 +642,126 @@ impl App {
             }
         }
         self.sort_channels();
+    }
+
+    /// Emoji to react with: the most used ones while `query` is empty, else
+    /// the best matches among standard and custom emoji.
+    pub fn emoji_choices(&self, query: &str) -> Vec<EmojiChoice> {
+        let query = query.trim_start_matches(':');
+        if query.is_empty() {
+            return self.frequent_reactions();
+        }
+        let mut scored: Vec<(i32, EmojiChoice)> = Vec::new();
+        for entry in emoji::all() {
+            let best = entry
+                .names
+                .iter()
+                .filter_map(|name| fuzzy_match(query, name).map(|(score, m)| (score, name, m)))
+                .max_by_key(|(score, name, _)| (*score, -(name.len() as i32)));
+            if let Some((score, name, matched)) = best {
+                scored.push((
+                    score,
+                    EmojiChoice {
+                        name: name.to_string(),
+                        glyph: Some(entry.glyph.to_string()),
+                        matched,
+                    },
+                ));
+            }
+        }
+        for name in &self.custom_emoji {
+            if let Some((score, matched)) = fuzzy_match(query, name) {
+                scored.push((
+                    score,
+                    EmojiChoice {
+                        name: name.clone(),
+                        glyph: None,
+                        matched,
+                    },
+                ));
+            }
+        }
+        scored.sort_by(|(a_score, a), (b_score, b)| {
+            b_score
+                .cmp(a_score)
+                .then(a.name.len().cmp(&b.name.len()))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        scored
+            .into_iter()
+            .take(MAX_EMOJI_CHOICES)
+            .map(|(_, choice)| choice)
+            .collect()
+    }
+
+    /// Reactions seen in the loaded conversations, most used first,
+    /// completed with common ones.
+    fn frequent_reactions(&self) -> Vec<EmojiChoice> {
+        let mut counts: HashMap<&str, u32> = HashMap::new();
+        let thread = self.thread.iter().flat_map(|t| t.messages.iter());
+        for message in self
+            .histories
+            .values()
+            .flat_map(|h| h.messages.iter())
+            .chain(thread)
+        {
+            for reaction in &message.reactions {
+                *counts.entry(reaction.name.as_str()).or_default() += reaction.count;
+            }
+        }
+        let mut names: Vec<(&str, u32)> = counts.into_iter().collect();
+        names.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        let mut chosen: Vec<&str> = names.into_iter().map(|(name, _)| name).take(24).collect();
+        for name in DEFAULT_REACTIONS {
+            if !chosen.contains(&name) {
+                chosen.push(name);
+            }
+        }
+        chosen
+            .into_iter()
+            .map(|name| EmojiChoice {
+                name: name.to_string(),
+                glyph: emoji::lookup(name),
+                matched: Vec::new(),
+            })
+            .collect()
+    }
+
+    /// The message `r` reacts to: the selected one in the focused list, else
+    /// the latest.
+    pub fn reaction_target(&self) -> Option<ReactionTarget> {
+        let (channel, messages, selected) = match (&self.thread, self.focus) {
+            (Some(thread), Focus::Thread) => {
+                (&thread.channel, &thread.messages[..], thread.selected)
+            }
+            _ => (
+                self.current.as_ref()?,
+                self.current_messages(),
+                self.selected,
+            ),
+        };
+        let message = selected.map_or(messages.last(), |i| messages.get(i))?;
+        Some(ReactionTarget {
+            channel: channel.clone(),
+            ts: message.ts.clone(),
+            author: self.author(message),
+            text: message.text.clone(),
+        })
+    }
+
+    /// The loaded copy of a message, wherever it is shown.
+    pub fn find_message(&self, channel: &str, ts: &str) -> Option<&Message> {
+        let history = self.histories.get(channel).map(|h| &h.messages[..]);
+        let thread = self
+            .thread
+            .as_ref()
+            .filter(|t| t.channel == channel)
+            .map(|t| &t.messages[..]);
+        history
+            .into_iter()
+            .chain(thread)
+            .flatten()
+            .find(|m| m.ts == ts)
     }
 
     pub fn switcher_results(&self, query: &str) -> Vec<SwitcherResult> {

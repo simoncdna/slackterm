@@ -589,7 +589,9 @@ fn channel_row(
         None => {}
     }
     let used: usize = spans.iter().map(|s| s.content.width()).sum();
-    let room = width.saturating_sub(used + badge.width() + 1);
+    // Keep a space between a long name and its badge.
+    let spacing = usize::from(!badge.is_empty());
+    let room = width.saturating_sub(used + spacing + badge.width() + 1);
     let name = truncate(&format!("{prefix} {}", app.channel_name(channel)), room);
     let gap = width.saturating_sub(used + name.width() + badge.width() + 1);
     spans.push(Span::styled(name, name_style));
@@ -793,8 +795,18 @@ fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
             ("⏎", "ouvrir / replier"),
             ("←→", "canaux / privés"),
         ],
-        Focus::Messages => vec![("j/k", "sélection"), ("t", "fil"), ("i", "écrire")],
-        Focus::Thread => vec![("i", "répondre"), ("esc", "fermer le fil")],
+        Focus::Messages => vec![
+            ("j/k", "sélection"),
+            ("r", "réagir"),
+            ("t", "fil"),
+            ("i", "écrire"),
+        ],
+        Focus::Thread => vec![
+            ("j/k", "sélection"),
+            ("r", "réagir"),
+            ("i", "répondre"),
+            ("esc", "fermer le fil"),
+        ],
     };
     hints.extend([
         ("^k", "aller à"),

@@ -7,6 +7,7 @@ pub(super) fn on_overlay_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Some(Overlay::Switcher { .. }) => on_switcher_key(app, key),
         Some(Overlay::Settings { .. }) => on_settings_key(app, key),
         Some(Overlay::Search(_)) => on_search_key(app, key),
+        Some(Overlay::Emoji(_)) => on_emoji_key(app, key),
         None => Vec::new(),
     }
 }
@@ -154,6 +155,7 @@ fn open_search_result(app: &mut App, found: SearchMatch) -> Vec<Command> {
                 ts: parent.clone(),
                 messages: Vec::new(),
                 loaded: false,
+                selected: None,
             });
             app.focus = Focus::Thread;
             commands.push(Command::LoadReplies {
@@ -171,4 +173,51 @@ fn open_search_result(app: &mut App, found: SearchMatch) -> Vec<Command> {
     });
     commands.extend(try_jump(app));
     commands
+}
+
+fn on_emoji_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let Some(Overlay::Emoji(picker)) = &mut app.overlay else {
+        return Vec::new();
+    };
+    match key.code {
+        KeyCode::Esc => app.overlay = None,
+        KeyCode::Up | KeyCode::BackTab => picker.cursor = picker.cursor.saturating_sub(1),
+        KeyCode::Char('p') if ctrl => picker.cursor = picker.cursor.saturating_sub(1),
+        KeyCode::Down | KeyCode::Tab => picker.cursor += 1,
+        KeyCode::Char('n') if ctrl => picker.cursor += 1,
+        KeyCode::Backspace => {
+            picker.query.backspace();
+            picker.cursor = 0;
+        }
+        KeyCode::Char(c) if !ctrl => {
+            picker.query.insert(c);
+            picker.cursor = 0;
+        }
+        KeyCode::Enter => {
+            let (query, cursor, target) = (
+                picker.query.text().to_string(),
+                picker.cursor,
+                picker.target.clone(),
+            );
+            let choices = app.emoji_choices(&query);
+            let chosen = choices
+                .get(cursor.min(choices.len().saturating_sub(1)))
+                .map(|c| c.name.clone());
+            app.overlay = None;
+            if let Some(name) = chosen {
+                return toggle_reaction(app, &target, &name);
+            }
+        }
+        _ => {}
+    }
+    // Keep the cursor on an existing choice.
+    if let Some(Overlay::Emoji(picker)) = &app.overlay {
+        let count = app.emoji_choices(picker.query.text()).len();
+        let clamped = picker.cursor.min(count.saturating_sub(1));
+        if let Some(Overlay::Emoji(picker)) = &mut app.overlay {
+            picker.cursor = clamped;
+        }
+    }
+    Vec::new()
 }

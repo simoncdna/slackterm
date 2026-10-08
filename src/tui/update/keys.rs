@@ -121,6 +121,7 @@ fn on_messages_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Char('g') | KeyCode::Home if len > 0 => app.selected = Some(0),
         KeyCode::Char('G') | KeyCode::End => app.selected = None,
         KeyCode::Char('t') => return open_thread(app),
+        KeyCode::Char('r') => open_emoji_picker(app),
         KeyCode::Enter => app.mode = Mode::Insert,
         KeyCode::Char('h') | KeyCode::Left => focus_sidebar(app),
         _ => {}
@@ -129,12 +130,34 @@ fn on_messages_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
 }
 
 fn on_thread_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+    let Some(thread) = &mut app.thread else {
+        return Vec::new();
+    };
+    let len = thread.messages.len();
     match key.code {
         KeyCode::Enter => app.mode = Mode::Insert,
         KeyCode::Char('h') | KeyCode::Left => app.focus = Focus::Messages,
+        KeyCode::Char('k') | KeyCode::Up if len > 0 => {
+            thread.selected = Some(thread.selected.unwrap_or(len).saturating_sub(1));
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            thread.selected = thread.selected.map(|i| i + 1).filter(|&i| i < len);
+        }
+        KeyCode::Char('G') | KeyCode::End => thread.selected = None,
+        KeyCode::Char('r') => open_emoji_picker(app),
         _ => {}
     }
     Vec::new()
+}
+
+fn open_emoji_picker(app: &mut App) {
+    if let Some(target) = app.reaction_target() {
+        app.overlay = Some(Overlay::Emoji(EmojiPicker {
+            query: Input::default(),
+            cursor: 0,
+            target,
+        }));
+    }
 }
 
 fn select_older(app: &mut App, step: usize, len: usize) {
@@ -176,6 +199,7 @@ fn open_thread(app: &mut App) -> Vec<Command> {
         ts: ts.clone(),
         messages: vec![message],
         loaded: !has_replies,
+        selected: None,
     });
     app.focus = Focus::Thread;
     if has_replies {

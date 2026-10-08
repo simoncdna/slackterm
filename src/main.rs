@@ -37,6 +37,8 @@ enum Command {
     Logout,
     /// Afficher les workspaces enregistrés et vérifier la connexion
     Status,
+    /// Essayer l'interface sur un workspace fictif, sans compte Slack
+    Demo,
 }
 
 #[tokio::main]
@@ -69,5 +71,6 @@ async fn main() -> Result<()> {
         }
         Command::Logout => commands::logout(&store),
         Command::Status => commands::status(&store, DEFAULT_API_BASE).await,
+        Command::Demo => slackterm::tui::run_demo().await,
     }
 }

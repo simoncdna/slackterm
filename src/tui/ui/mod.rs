@@ -27,8 +27,15 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Some(Overlay::Switcher { query, cursor }) => {
             overlays::switcher(frame, app, &theme, query, *cursor)
         }
-        Some(Overlay::Settings { row }) => overlays::settings(frame, &theme, &app.settings, *row),
+        Some(Overlay::Settings { row }) => overlays::settings(
+            frame,
+            &theme,
+            &app.settings,
+            app.settings_path.as_deref(),
+            *row,
+        ),
         Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
+        Some(Overlay::Emoji(picker)) => overlays::emoji_picker(frame, app, &theme, picker),
         None => {}
     }
 }
@@ -223,6 +230,24 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_emoji_picker_shows_glyphs_and_own_reactions() {
+        let mut app = sample_app();
+        let me = app.my_id.clone();
+        app.histories.get_mut("C1").unwrap().messages[1].add_reaction("+1", &me);
+        app.focus = Focus::Messages;
+        update(
+            &mut app,
+            Event::Key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char('r'),
+            )),
+        );
+        let text = screen(&app, 100, 30);
+        assert!(text.contains("réagir"), "{text}");
+        assert!(text.contains("message de camille"), "{text}");
+        assert!(text.contains("👍 :+1:  ✓ déjà mise"), "{text}");
     }
 
     /// `cargo test preview -- --ignored --nocapture` prints every layout.
