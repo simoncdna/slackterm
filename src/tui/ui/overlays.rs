@@ -5,11 +5,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 
 use crate::config::{Choice, Settings};
+use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::input::Input;
-use crate::tui::state::App;
+use crate::tui::state::{App, Search, SearchStatus};
 use crate::tui::theme::Theme;
 
-use super::text::truncate;
+use super::text::{Styled, local_time, short_datetime, truncate, truncate_styled};
 
 fn popup(frame: &mut Frame, area: Rect, theme: &Theme, title: &str, right: String) -> Rect {
     frame.render_widget(Clear, area);
@@ -184,4 +185,173 @@ pub fn settings(frame: &mut Frame, theme: &Theme, settings: &Settings, row: usiz
         )),
         hint_area,
     );
+}
+
+pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
+    let screen = frame.area();
+    let width = screen.width.saturating_sub(4).min(110);
+    let height = screen.height.saturating_sub(2).min(34);
+    let area = Rect {
+        x: screen.x + (screen.width - width) / 2,
+        y: screen.y + (screen.height - height) / 4,
+        width,
+        height,
+    };
+    let status = match &search.status {
+        SearchStatus::Idle => "⏎ pour chercher".to_string(),
+        SearchStatus::Loading => "recherche…".to_string(),
+        SearchStatus::Done(matches) => {
+            let plural = if matches.len() > 1 { "s" } else { "" };
+            format!("{} résultat{plural}", matches.len())
+        }
+        SearchStatus::Failed(_) => "erreur".to_string(),
+    };
+    let inner = popup(frame, area, theme, "chercher dans les messages", status);
+    let [input_area, tip_area, list_area, hint_area] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(2),
+        Constraint::Fill(1),
+        Constraint::Length(1),
+    ])
+    .areas(inner);
+
+    let prompt = Line::from(vec![
+        Span::styled("/ ", Style::new().fg(theme.accent)),
+        Span::styled(search.query.text().to_string(), Style::new().fg(theme.fg)),
+    ]);
+    frame.render_widget(Paragraph::new(prompt), input_area);
+    let (_, (_, cursor_col)) = search.query.layout(u16::MAX);
+    frame.set_cursor_position((input_area.x + 2 + cursor_col, input_area.y));
+    let tip = "in:#canal   from:@personne   during:today   \"phrase exacte\"";
+    frame.render_widget(
+        Paragraph::new(Line::styled(tip, Style::new().fg(theme.muted))),
+        tip_area,
+    );
+
+    let message = |text: String, color| Paragraph::new(Line::styled(text, Style::new().fg(color)));
+    match &search.status {
+        SearchStatus::Idle => frame.render_widget(
+            message(
+                "Tape ta recherche puis ⏎. ⏎ sur un résultat l'ouvre.".into(),
+                theme.muted,
+            ),
+            list_area,
+        ),
+        SearchStatus::Loading => {
+            frame.render_widget(message("recherche…".into(), theme.muted), list_area)
+        }
+        SearchStatus::Failed(reason) => {
+            frame.render_widget(message(reason.clone(), theme.unread), list_area)
+        }
+        SearchStatus::Done(matches) if matches.is_empty() => {
+            frame.render_widget(message("Aucun résultat.".into(), theme.muted), list_area)
+        }
+        SearchStatus::Done(matches) => {
+            let visible = (list_area.height as usize / 3).max(1);
+            let start = (search.cursor + 1).saturating_sub(visible);
+            let today = chrono::Local::now().date_naive();
+            let mut lines = Vec::new();
+            for (index, found) in matches.iter().enumerate().skip(start).take(visible) {
+                let selected = index == search.cursor;
+                let (header, snippet) =
+                    result_lines(app, theme, found, list_area.width as usize, selected, today);
+                let style = if selected {
+                    Style::new().bg(theme.surface)
+                } else {
+                    Style::new()
+                };
+                lines.push(header.style(style));
+                lines.push(snippet.style(style));
+                lines.push(Line::default());
+            }
+            frame.render_widget(Paragraph::new(lines), list_area);
+        }
+    }
+
+    frame.render_widget(
+        Paragraph::new(hint_line(
+            theme,
+            &[
+                ("⏎", "chercher / ouvrir"),
+                ("↑↓", "choisir"),
+                ("esc", "fermer"),
+            ],
+        )),
+        hint_area,
+    );
+}
+
+/// Two rows per result: where and who, then the text with the matched
+/// terms highlighted.
+fn result_lines(
+    app: &App,
+    theme: &Theme,
+    found: &SearchMatch,
+    width: usize,
+    selected: bool,
+    today: chrono::NaiveDate,
+) -> (Line<'static>, Line<'static>) {
+    let place = match app.channel(&found.channel.id) {
+        Some(channel) => app.channel_label(channel),
+        None if found.channel.is_im => format!("@{}", app.user_name(&found.channel.name)),
+        None => format!("#{}", found.channel.name),
+    };
+    let author = match &found.user {
+        Some(user) => app.user_name(user),
+        None => found.username.clone().unwrap_or_default(),
+    };
+    let key = found.user.clone().unwrap_or_else(|| author.clone());
+    let mut header = vec![
+        Span::styled(
+            if selected { "› " } else { "  " },
+            Style::new().fg(theme.accent),
+        ),
+        Span::styled(place, Style::new().fg(theme.link)),
+        Span::styled(" · ", Style::new().fg(theme.muted)),
+        Span::styled(author, Style::new().fg(theme.nick(&key)).bold()),
+        Span::styled(
+            format!(
+                " · {}",
+                short_datetime(local_time(found.epoch_seconds()), today)
+            ),
+            Style::new().fg(theme.muted),
+        ),
+    ];
+    if found.thread_ts().is_some() {
+        header.push(Span::styled("  ↳ fil", Style::new().fg(theme.link)));
+    }
+
+    let names = |id: &str| app.users.get(id).map(|u| u.display_name().to_string());
+    let normal = Style::new().fg(theme.fg);
+    let highlight = Style::new().fg(theme.accent).bold();
+    let mut highlighted = false;
+    let mut parts: Vec<Styled> = Vec::new();
+    for segment in mrkdwn::parse(&found.text, &app.my_id, names) {
+        let base = match segment.kind {
+            mrkdwn::Kind::Text => normal,
+            mrkdwn::Kind::Code => normal.bg(theme.panel),
+            _ => Style::new().fg(theme.link),
+        };
+        let mut current = String::new();
+        for c in segment.text.chars() {
+            match c {
+                HIGHLIGHT_START | HIGHLIGHT_END => {
+                    let style = if highlighted { highlight } else { base };
+                    parts.push((std::mem::take(&mut current), style));
+                    highlighted = c == HIGHLIGHT_START;
+                }
+                '\n' => current.push(' '),
+                c => current.push(c),
+            }
+        }
+        parts.push((current, if highlighted { highlight } else { base }));
+    }
+    parts.retain(|(text, _)| !text.is_empty());
+    let mut snippet = vec![Span::raw("    ")];
+    snippet.extend(
+        truncate_styled(parts, width.saturating_sub(4))
+            .into_iter()
+            .map(|(text, style)| Span::styled(text, style)),
+    );
+    (Line::from(header), Line::from(snippet))
 }

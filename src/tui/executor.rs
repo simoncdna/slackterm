@@ -36,10 +36,35 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             Err(_) => ApiEvent::CountsUnavailable,
         },
         Command::LoadHistory(channel) => client
-            .conversations_history(&channel, 100)
+            .conversations_history(&channel, None, 100)
             .await
-            .map(|messages| ApiEvent::History { channel, messages })
+            .map(|page| ApiEvent::History {
+                channel,
+                messages: page.messages,
+                has_more: page.has_more,
+            })
             .map_err(|e| format!("historique : {e}"))?,
+        Command::LoadOlder { channel, before } => client
+            .conversations_history(&channel, Some(&before), 200)
+            .await
+            .map(|page| ApiEvent::Older {
+                channel,
+                messages: page.messages,
+                has_more: page.has_more,
+            })
+            .map_err(|e| format!("historique : {e}"))?,
+        // The default sections stay if the user's cannot be read.
+        Command::LoadSections => match client.channel_sections().await {
+            Ok(sections) => ApiEvent::Sections(sections),
+            Err(_) => return Ok(None),
+        },
+        Command::Search(query) => {
+            let result = client
+                .search_messages(&query)
+                .await
+                .map_err(|e| e.to_string());
+            ApiEvent::SearchResults { query, result }
+        }
         Command::LoadReplies { channel, ts } => client
             .conversations_replies(&channel, &ts)
             .await
@@ -63,6 +88,12 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 .conversations_mark(&channel, &ts)
                 .await
                 .map_err(|e| format!("marquer comme lu : {e}"))?;
+            return Ok(None);
+        }
+        Command::SaveSidebar(state) => {
+            state
+                .save()
+                .map_err(|e| format!("barre latérale : {e:#}"))?;
             return Ok(None);
         }
         Command::SaveSettings(settings) => {

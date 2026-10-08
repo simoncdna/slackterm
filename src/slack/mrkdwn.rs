@@ -1,13 +1,19 @@
 //! Turns Slack's message markup (`<@U123>`, `<https://…|label>`, `&lt;`,
 //! backticks…) into plain-text segments the UI can style.
 
+use super::emoji::{self, Piece};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Text,
-    Mention { me: bool },
+    Mention {
+        me: bool,
+    },
     Channel,
     Link,
     Code,
+    /// A custom workspace emoji, shown by name since it is an image.
+    Emoji,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +79,19 @@ fn flush(segments: &mut Vec<Segment>, buffer: &mut String, kind: Kind) {
         return;
     }
     let text = std::mem::take(buffer);
+    if kind != Kind::Text {
+        push(segments, text, kind);
+        return;
+    }
+    for piece in emoji::split(&text) {
+        match piece {
+            Piece::Text(text) => push(segments, text, Kind::Text),
+            Piece::Custom(name) => push(segments, format!(":{name}:"), Kind::Emoji),
+        }
+    }
+}
+
+fn push(segments: &mut Vec<Segment>, text: String, kind: Kind) {
     match segments.last_mut() {
         Some(last) if last.kind == kind => last.text.push_str(&text),
         _ => segments.push(Segment { text, kind }),
@@ -167,6 +186,19 @@ mod tests {
         assert_eq!(
             render("```\n<div>\n```"),
             vec![("\n<div>\n".into(), Kind::Code)]
+        );
+    }
+
+    #[test]
+    fn renders_emoji_but_not_inside_code() {
+        assert_eq!(
+            render("go :rocket: :pictaheart: `:tada:`"),
+            vec![
+                ("go 🚀 ".into(), Kind::Text),
+                (":pictaheart:".into(), Kind::Emoji),
+                (" ".into(), Kind::Text),
+                (":tada:".into(), Kind::Code),
+            ]
         );
     }
 

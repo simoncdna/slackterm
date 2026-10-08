@@ -28,6 +28,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             overlays::switcher(frame, app, &theme, query, *cursor)
         }
         Some(Overlay::Settings { row }) => overlays::settings(frame, &theme, &app.settings, *row),
+        Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
         None => {}
     }
 }
@@ -50,8 +51,12 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
         for y in 0..buffer.area.height {
-            for x in 0..buffer.area.width {
-                text.push_str(buffer[(x, y)].symbol());
+            let mut x = 0;
+            while x < buffer.area.width {
+                let symbol = buffer[(x, y)].symbol();
+                text.push_str(symbol);
+                // A wide character also covers the next cell.
+                x += unicode_width::UnicodeWidthStr::width(symbol).max(1) as u16;
             }
             text.push('\n');
         }
@@ -76,6 +81,7 @@ mod tests {
             Event::Api(ApiEvent::History {
                 channel: "C1".into(),
                 messages: vec![message("1700000000.000000", "U2", "salut"), with_thread],
+                has_more: false,
             }),
         );
         app
@@ -139,6 +145,52 @@ mod tests {
             assert!(text.contains("une réponse en cours"), "{layout:?}:\n{text}");
             assert!(text.contains("INSERTION"), "{layout:?}:\n{text}");
         }
+    }
+
+    #[test]
+    fn search_overlay_lists_results() {
+        let mut app = sample_app();
+        let found: crate::slack::SearchMatch = serde_json::from_value(serde_json::json!({
+            "ts": "1700000100.000000",
+            "user": "U2",
+            "text": "le \u{e000}déploiement\u{e001} est passé :rocket:",
+            "permalink": "https://x/p?thread_ts=1700000000.000000",
+            "channel": {"id": "C1", "name": "general"}
+        }))
+        .unwrap();
+        app.overlay = Some(Overlay::Search(crate::tui::state::Search {
+            query: Default::default(),
+            submitted: "déploiement".into(),
+            status: crate::tui::state::SearchStatus::Done(vec![found]),
+            cursor: 0,
+        }));
+        let text = screen(&app, 110, 30);
+        assert!(text.contains("chercher dans les messages"), "{text}");
+        assert!(text.contains("1 résultat"), "{text}");
+        assert!(text.contains("#general · camille"), "{text}");
+        assert!(text.contains("le déploiement est passé 🚀"), "{text}");
+        assert!(text.contains("↳ fil"), "{text}");
+    }
+
+    #[test]
+    fn sidebar_shows_sections_and_their_emoji() {
+        let mut app = sample_app();
+        app.set_sections(vec![
+            serde_json::from_value(serde_json::json!({
+                "channel_section_id": "S1",
+                "type": "standard",
+                "name": "Tooling",
+                "emoji": "toolbox",
+                "channel_ids_page": {"channel_ids": ["C2"]}
+            }))
+            .unwrap(),
+        ]);
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("▾ 🧰 Tooling"), "{text}");
+
+        app.collapsed.insert("S1".into());
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("▸ 🧰 Tooling 1"), "{text}");
     }
 
     /// `cargo test preview -- --ignored --nocapture` prints every layout.

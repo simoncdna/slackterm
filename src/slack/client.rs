@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use super::types::{Conversation, ConversationCount, Message, User};
+use super::types::{ChannelSection, Conversation, ConversationCount, Message, SearchMatch, User};
 
 pub const DEFAULT_API_BASE: &str = "https://slack.com/api";
 const MAX_RATE_LIMIT_RETRIES: u32 = 3;
@@ -37,6 +37,11 @@ pub struct AuthTest {
     pub user: String,
     pub team_id: String,
     pub user_id: String,
+}
+
+pub struct HistoryPage {
+    pub messages: Vec<Message>,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,17 +114,47 @@ impl SlackClient {
             .collect())
     }
 
-    /// The latest messages of a conversation, oldest first.
+    /// The user's sidebar sections, in their display order. Undocumented.
+    pub async fn channel_sections(&self) -> Result<Vec<ChannelSection>, SlackError> {
+        let body = self
+            .call_value("users.channelSections.list", &Vec::new())
+            .await?;
+        let sections = serde_json::from_value(body["channel_sections"].clone())?;
+        Ok(super::types::order_sections(sections))
+    }
+
+    /// The latest messages of a conversation, or the ones before `before`,
+    /// oldest first.
     pub async fn conversations_history(
         &self,
         channel: &str,
+        before: Option<&str>,
         limit: u32,
-    ) -> Result<Vec<Message>, SlackError> {
-        let params = vec![("channel", channel.into()), ("limit", limit.to_string())];
+    ) -> Result<HistoryPage, SlackError> {
+        let mut params = vec![("channel", channel.into()), ("limit", limit.to_string())];
+        if let Some(before) = before {
+            params.push(("latest", before.into()));
+        }
         let body = self.call_value("conversations.history", &params).await?;
         let mut messages: Vec<Message> = serde_json::from_value(body["messages"].clone())?;
         messages.reverse();
-        Ok(messages)
+        Ok(HistoryPage {
+            messages,
+            has_more: body["has_more"] == true,
+        })
+    }
+
+    /// Messages matching a Slack search query, newest first.
+    pub async fn search_messages(&self, query: &str) -> Result<Vec<SearchMatch>, SlackError> {
+        let params = vec![
+            ("query", query.into()),
+            ("count", "50".into()),
+            ("highlight", "true".into()),
+            ("sort", "timestamp".into()),
+            ("sort_dir", "desc".into()),
+        ];
+        let body = self.call_value("search.messages", &params).await?;
+        Ok(serde_json::from_value(body["messages"]["matches"].clone())?)
     }
 
     /// A thread's parent followed by its replies, oldest first.
@@ -320,12 +355,13 @@ mod tests {
             .mount(&server)
             .await;
 
-        let messages = client(&server)
-            .conversations_history("C1", 50)
+        let page = client(&server)
+            .conversations_history("C1", None, 50)
             .await
             .unwrap();
 
-        assert_eq!(messages[0].text, "first");
+        assert_eq!(page.messages[0].text, "first");
+        assert!(!page.has_more);
     }
 
     #[tokio::test]

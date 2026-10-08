@@ -26,7 +26,10 @@ const ALIASES: &[(&str, &str)] = &[
     ("spock-hand", "vulcan_salute"),
     ("i_love_you_hand_sign", "love_you_gesture"),
     ("face_with_cowboy_hat", "cowboy_hat_face"),
-    ("smiling_face_with_3_hearts", "smiling_face_with_three_hearts"),
+    (
+        "smiling_face_with_3_hearts",
+        "smiling_face_with_three_hearts",
+    ),
     ("person_climbing", "climbing"),
 ];
 
@@ -54,7 +57,10 @@ pub fn lookup(name: &str) -> Option<String> {
 }
 
 fn find(name: &str) -> Option<&'static emojis::Emoji> {
-    let alias = ALIASES.iter().find(|(slack, _)| *slack == name).map(|(_, github)| *github);
+    let alias = ALIASES
+        .iter()
+        .find(|(slack, _)| *slack == name)
+        .map(|(_, github)| *github);
     let underscored = name.replace('-', "_");
     // Slack's `woman-running` / `male-technologist` are GitHub's
     // `running_woman` / `man_technologist`.
@@ -67,10 +73,15 @@ fn find(name: &str) -> Option<&'static emojis::Emoji> {
             _ => None,
         }
     });
-    [Some(name), alias, Some(underscored.as_str()), gendered.as_deref()]
-        .into_iter()
-        .flatten()
-        .find_map(emojis::get_by_shortcode)
+    [
+        Some(name),
+        alias,
+        Some(underscored.as_str()),
+        gendered.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .find_map(emojis::get_by_shortcode)
 }
 
 fn skin_tone(level: &str) -> Option<SkinTone> {
@@ -110,9 +121,9 @@ pub fn split(text: &str) -> Vec<Piece> {
     while let Some(start) = rest.find(':') {
         plain.push_str(&rest[..start]);
         let after = &rest[start + 1..];
-        let name_len = after.find(':').filter(|&len| {
-            len > 0 && after[..len].chars().all(is_name_char)
-        });
+        let name_len = after
+            .find(':')
+            .filter(|&len| len > 0 && after[..len].chars().all(is_name_char));
         let Some(len) = name_len else {
             plain.push(':');
             rest = after;
@@ -193,7 +204,10 @@ mod tests {
         assert_eq!(
             split("bravo :tada: :+1::skin-tone-2: et :pictaheart: !"),
             vec![
-                Piece::Text(format!("bravo 🎉 {} et ", lookup("+1::skin-tone-2").unwrap())),
+                Piece::Text(format!(
+                    "bravo 🎉 {} et ",
+                    lookup("+1::skin-tone-2").unwrap()
+                )),
                 Piece::Custom("pictaheart".into()),
                 Piece::Text(" !".into()),
             ]

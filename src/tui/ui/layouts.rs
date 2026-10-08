@@ -34,14 +34,15 @@ fn thread_target(app: &App) -> bool {
     app.thread.is_some() && app.focus == Focus::Thread
 }
 
-/// The current channel's messages, styled for `style`.
+/// The current channel's messages, styled for `style`, topped by the state
+/// of older history.
 fn channel_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, style: MessageStyle) {
     let selected = if app.focus == Focus::Messages {
         app.selected
     } else {
         None
     };
-    let rendered = message_lines(
+    let mut rendered = message_lines(
         app,
         theme,
         app.current_messages(),
@@ -50,7 +51,22 @@ fn channel_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, sty
         style,
         false,
     );
-    let loading = app.current_history().is_none_or(|h| !h.loaded);
+    let history = app.current_history();
+    let top = match history {
+        Some(h) if h.loading_older => Some("chargement des messages plus anciens…"),
+        Some(h) if h.loaded && !h.has_more && !h.messages.is_empty() => {
+            Some("début de la conversation")
+        }
+        _ => None,
+    };
+    if let Some(label) = top {
+        rendered.lines.insert(
+            0,
+            separator(label, area.width as usize, theme.muted, theme.border),
+        );
+        rendered.selected = rendered.selected.map(|(start, end)| (start + 1, end + 1));
+    }
+    let loading = history.is_none_or(|h| !h.loaded);
     render_messages(frame, area, rendered, theme, loading);
 }
 

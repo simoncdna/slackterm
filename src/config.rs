@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -131,6 +132,39 @@ impl Settings {
 
     fn to_toml(self) -> Result<String> {
         Ok(toml::to_string(&self)?)
+    }
+}
+
+/// What the user changed in the sidebar, kept between launches.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SidebarState {
+    #[serde(default)]
+    pub collapsed: BTreeSet<String>,
+}
+
+impl SidebarState {
+    fn path() -> Result<PathBuf> {
+        let dirs = directories::ProjectDirs::from("", "", "slackterm")
+            .context("impossible de déterminer le dossier de données")?;
+        Ok(dirs.data_dir().join("sidebar.toml"))
+    }
+
+    /// Falls back to an empty state: losing it only re-expands sections.
+    pub fn load() -> Self {
+        Self::path()
+            .ok()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|contents| toml::from_str(&contents).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let path = Self::path()?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&path, toml::to_string(self)?)
+            .with_context(|| format!("impossible d'écrire {}", path.display()))
     }
 }
 

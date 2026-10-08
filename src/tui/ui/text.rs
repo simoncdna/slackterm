@@ -139,6 +139,41 @@ pub fn day_label(day: NaiveDate, today: NaiveDate) -> String {
     }
 }
 
+const SHORT_MONTHS: [&str; 12] = [
+    "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.",
+    "déc.",
+];
+
+/// `10:02` today, `8 oct. 10:02` this year, `8 oct. 2025` before.
+pub fn short_datetime(time: DateTime<Local>, today: NaiveDate) -> String {
+    let day = time.date_naive();
+    let month = SHORT_MONTHS[day.month0() as usize];
+    if day == today {
+        time.format("%H:%M").to_string()
+    } else if day.year() == today.year() {
+        format!("{} {month} {}", day.day(), time.format("%H:%M"))
+    } else {
+        format!("{} {month} {}", day.day(), day.year())
+    }
+}
+
+/// Cuts styled text to `width` columns, ending with `…` when shortened.
+pub fn truncate_styled(segments: Vec<Styled>, width: usize) -> Vec<Styled> {
+    let mut out = Vec::new();
+    let mut used = 0;
+    for (text, style) in segments {
+        let text_width = text.width();
+        if used + text_width <= width {
+            used += text_width;
+            out.push((text, style));
+            continue;
+        }
+        out.push((truncate(&text, width - used), style));
+        break;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +209,28 @@ mod tests {
         assert_eq!(truncate("deploys", 5), "depl…");
         assert_eq!(truncate("dev", 5), "dev");
         assert_eq!(align_right("ab", 4), "  ab");
+    }
+
+    #[test]
+    fn formats_short_dates() {
+        let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
+        let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 10, 2, 0).single().unwrap();
+        assert_eq!(short_datetime(at(2026, 10, 8), today), "10:02");
+        assert_eq!(short_datetime(at(2026, 3, 2), today), "2 mars 10:02");
+        assert_eq!(short_datetime(at(2025, 12, 1), today), "1 déc. 2025");
+    }
+
+    #[test]
+    fn truncates_styled_text() {
+        let bold = Style::new().bold();
+        let cut = truncate_styled(
+            vec![("abc".into(), Style::new()), ("defgh".into(), bold)],
+            6,
+        );
+        assert_eq!(
+            cut,
+            vec![("abc".into(), Style::new()), ("de…".into(), bold)]
+        );
     }
 
     #[test]

@@ -1,8 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::config::{Layout, Settings};
 use crate::session::Workspace;
-use crate::slack::{Conversation, ConversationCount, Message, User};
+use crate::slack::{
+    ChannelSection, Conversation, ConversationCount, Message, SearchChannel, SearchMatch, User,
+    emoji,
+};
 
 use super::fuzzy::fuzzy_match;
 use super::input::Input;
@@ -57,9 +60,116 @@ impl Channel {
         }
     }
 
+    /// A conversation known only from a search result, such as a public
+    /// channel the user is not a member of.
+    pub fn from_search(channel: &SearchChannel) -> Self {
+        let kind = if channel.is_im {
+            ChannelKind::Direct
+        } else if channel.is_mpim {
+            ChannelKind::Group
+        } else if channel.is_private {
+            ChannelKind::Private
+        } else {
+            ChannelKind::Public
+        };
+        Self {
+            id: channel.id.clone(),
+            kind,
+            name: channel.name.clone(),
+            // Search names direct messages after the other member's id.
+            dm_user: channel.is_im.then(|| channel.name.clone()),
+            topic: String::new(),
+            unread: false,
+            mentions: 0,
+            listed: false,
+            latest: String::new(),
+        }
+    }
+
     pub fn is_direct(&self) -> bool {
         matches!(self.kind, ChannelKind::Direct | ChannelKind::Group)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SectionKind {
+    /// Created by the user, with an explicit list of conversations.
+    Custom,
+    /// Every other channel.
+    Channels,
+    /// Every other direct message.
+    Direct,
+    Starred,
+}
+
+#[derive(Debug, Clone)]
+pub struct Section {
+    pub id: String,
+    pub kind: SectionKind,
+    pub name: String,
+    pub emoji: Option<String>,
+    pub channel_ids: Vec<String>,
+}
+
+impl Section {
+    /// Sections of the web client that hold conversations; others (apps,
+    /// Slack Connect, agents…) are skipped unless they list conversations.
+    pub fn from_slack(section: ChannelSection) -> Option<Self> {
+        let channel_ids = section.channel_ids_page.channel_ids;
+        let (kind, default_name) = match section.kind.as_str() {
+            "standard" => (SectionKind::Custom, ""),
+            "channels" => (SectionKind::Channels, "Canaux"),
+            "direct_messages" => (SectionKind::Direct, "Messages directs"),
+            "stars" => (SectionKind::Starred, "Favoris"),
+            _ if !channel_ids.is_empty() => (SectionKind::Custom, ""),
+            _ => return None,
+        };
+        Some(Self {
+            id: section.channel_section_id,
+            kind,
+            name: if section.name.is_empty() {
+                default_name.to_string()
+            } else {
+                section.name
+            },
+            emoji: (!section.emoji.is_empty())
+                .then(|| emoji::lookup(&section.emoji))
+                .flatten(),
+            channel_ids,
+        })
+    }
+
+    /// Used until the user's sections are loaded, or if they cannot be.
+    pub fn defaults() -> Vec<Self> {
+        let section = |id: &str, kind, name: &str| Self {
+            id: id.to_string(),
+            kind,
+            name: name.to_string(),
+            emoji: None,
+            channel_ids: Vec::new(),
+        };
+        vec![
+            section("channels", SectionKind::Channels, "Canaux"),
+            section("direct_messages", SectionKind::Direct, "Messages directs"),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SidebarItem {
+    Section(String),
+    Channel(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SidebarRow {
+    Section {
+        index: usize,
+        collapsed: bool,
+        /// Conversations hidden by the collapse.
+        hidden: usize,
+    },
+    Channel(usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +196,36 @@ pub enum Connection {
 pub struct History {
     pub messages: Vec<Message>,
     pub loaded: bool,
+    /// Older messages exist on Slack.
+    pub has_more: bool,
+    pub loading_older: bool,
+}
+
+/// A message to select once it is loaded, after opening a search result.
+#[derive(Debug, Clone)]
+pub struct Jump {
+    pub channel: String,
+    pub ts: String,
+    /// Pages of older history fetched so far to reach it.
+    pub pages: u32,
+}
+
+#[derive(Debug)]
+pub enum SearchStatus {
+    /// Nothing submitted yet.
+    Idle,
+    Loading,
+    Done(Vec<SearchMatch>),
+    Failed(String),
+}
+
+#[derive(Debug)]
+pub struct Search {
+    pub query: Input,
+    /// The query whose results are shown.
+    pub submitted: String,
+    pub status: SearchStatus,
+    pub cursor: usize,
 }
 
 #[derive(Debug)]
@@ -101,6 +241,7 @@ pub struct Thread {
 pub enum Overlay {
     Switcher { query: Input, cursor: usize },
     Settings { row: usize },
+    Search(Search),
 }
 
 pub const SETTINGS_ROWS: usize = 3;
@@ -126,7 +267,13 @@ pub struct App {
     /// Channels that received messages before they were known.
     pub pending_unread: HashSet<String>,
     pub current: Option<String>,
-    pub sidebar_cursor: usize,
+    pub sections: Vec<Section>,
+    /// Ids of the collapsed sections.
+    pub collapsed: BTreeSet<String>,
+    /// `None` until the user moves in the sidebar: it then follows the
+    /// current channel.
+    pub sidebar_cursor: Option<SidebarItem>,
+    pub jump: Option<Jump>,
     pub histories: HashMap<String, History>,
     /// Selected message in the current channel; `None` follows the latest.
     pub selected: Option<usize>,
@@ -159,7 +306,10 @@ impl App {
             counts_unavailable: false,
             pending_unread: HashSet::new(),
             current: None,
-            sidebar_cursor: 0,
+            sections: Section::defaults(),
+            collapsed: BTreeSet::new(),
+            sidebar_cursor: None,
+            jump: None,
             histories: HashMap::new(),
             selected: None,
             thread: None,
@@ -246,10 +396,8 @@ impl App {
             .unwrap_or_default()
     }
 
-    /// Channels first, then direct messages, each alphabetically. The
-    /// sidebar cursor stays on the same channel.
+    /// Channels alphabetically, then direct messages by recency.
     pub fn sort_channels(&mut self) {
-        let cursor_id = self.channels.get(self.sidebar_cursor).map(|c| c.id.clone());
         let mut keyed: Vec<(String, Channel)> = std::mem::take(&mut self.channels)
             .into_iter()
             .map(|c| (self.channel_name(&c).to_lowercase(), c))
@@ -264,9 +412,6 @@ impl App {
                 .then_with(|| a_name.cmp(b_name))
         });
         self.channels = keyed.into_iter().map(|(_, c)| c).collect();
-        if let Some(id) = cursor_id {
-            self.sidebar_cursor = self.channels.iter().position(|c| c.id == id).unwrap_or(0);
-        }
     }
 
     pub fn is_listed(&self, channel: &Channel) -> bool {
@@ -276,11 +421,110 @@ impl App {
             || self.current.as_deref() == Some(channel.id.as_str())
     }
 
-    /// Indices in `channels` of the ones shown in the sidebar.
-    pub fn listed_indices(&self) -> Vec<usize> {
-        (0..self.channels.len())
-            .filter(|&i| self.is_listed(&self.channels[i]))
+    /// The section a conversation appears in: the user's own section that
+    /// lists it, else the default one for its kind.
+    fn section_of(&self, channel: &Channel) -> Option<usize> {
+        let explicit = self.sections.iter().position(|s| {
+            matches!(s.kind, SectionKind::Custom | SectionKind::Starred)
+                && s.channel_ids.contains(&channel.id)
+        });
+        let fallback = if channel.is_direct() {
+            SectionKind::Direct
+        } else {
+            SectionKind::Channels
+        };
+        explicit.or_else(|| self.sections.iter().position(|s| s.kind == fallback))
+    }
+
+    /// The sidebar, top to bottom. Collapsed sections still show the
+    /// conversations that need attention, as the web client does.
+    pub fn sidebar_rows(&self) -> Vec<SidebarRow> {
+        let mut members: Vec<Vec<usize>> = vec![Vec::new(); self.sections.len()];
+        for (index, channel) in self.channels.iter().enumerate() {
+            let Some(section) = self.section_of(channel) else {
+                continue;
+            };
+            if self.is_listed(channel) || self.sections[section].kind != SectionKind::Direct {
+                members[section].push(index);
+            }
+        }
+
+        let mut rows = Vec::new();
+        for (index, section) in self.sections.iter().enumerate() {
+            let channels = &members[index];
+            if channels.is_empty() {
+                continue;
+            }
+            let collapsed = self.collapsed.contains(&section.id);
+            let shown: Vec<usize> = channels
+                .iter()
+                .copied()
+                .filter(|&i| !collapsed || self.needs_attention(&self.channels[i]))
+                .collect();
+            rows.push(SidebarRow::Section {
+                index,
+                collapsed,
+                hidden: channels.len() - shown.len(),
+            });
+            rows.extend(shown.into_iter().map(SidebarRow::Channel));
+        }
+        rows
+    }
+
+    fn needs_attention(&self, channel: &Channel) -> bool {
+        channel.unread
+            || channel.mentions > 0
+            || self.current.as_deref() == Some(channel.id.as_str())
+    }
+
+    pub fn sidebar_items(&self) -> Vec<SidebarItem> {
+        self.sidebar_rows()
+            .into_iter()
+            .map(|row| match row {
+                SidebarRow::Section { index, .. } => {
+                    SidebarItem::Section(self.sections[index].id.clone())
+                }
+                SidebarRow::Channel(index) => SidebarItem::Channel(self.channels[index].id.clone()),
+            })
             .collect()
+    }
+
+    /// Where the sidebar cursor is: the item last moved to if still shown,
+    /// else the current channel.
+    pub fn sidebar_position(&self, items: &[SidebarItem]) -> usize {
+        let current = self.current.clone().map(SidebarItem::Channel);
+        [self.sidebar_cursor.as_ref(), current.as_ref()]
+            .into_iter()
+            .flatten()
+            .find_map(|wanted| items.iter().position(|item| item == wanted))
+            .unwrap_or(0)
+    }
+
+    /// Indices in `channels` of the ones shown in the sidebar, in order.
+    #[cfg(test)]
+    pub fn listed_indices(&self) -> Vec<usize> {
+        self.sidebar_rows()
+            .into_iter()
+            .filter_map(|row| match row {
+                SidebarRow::Channel(index) => Some(index),
+                SidebarRow::Section { .. } => None,
+            })
+            .collect()
+    }
+
+    /// Replaces the default sections with the user's, keeping a home for
+    /// channels and direct messages they did not file anywhere.
+    pub fn set_sections(&mut self, sections: Vec<ChannelSection>) {
+        let mut sections: Vec<Section> = sections
+            .into_iter()
+            .filter_map(Section::from_slack)
+            .collect();
+        for default in Section::defaults() {
+            if !sections.iter().any(|s| s.kind == default.kind) {
+                sections.push(default);
+            }
+        }
+        self.sections = sections;
     }
 
     /// Applies the read state from `client.counts` once both it and the

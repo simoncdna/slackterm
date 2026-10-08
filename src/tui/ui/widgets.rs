@@ -10,8 +10,9 @@ use ratatui::widgets::{Block, BorderType, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
 use crate::slack::Message;
+use crate::slack::emoji;
 use crate::slack::mrkdwn::{self, Kind};
-use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode};
+use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow};
 use crate::tui::theme::Theme;
 
 use super::text::{Styled, align_right, day_label, local_time, truncate, wrap};
@@ -162,6 +163,7 @@ impl MessagePiece<'_> {
                     Kind::Channel => Style::new().fg(theme.link),
                     Kind::Link => Style::new().fg(theme.link).underlined(),
                     Kind::Code => Style::new().fg(theme.fg).bg(theme.panel),
+                    Kind::Emoji => muted,
                 };
                 (segment.text, style)
             })
@@ -188,8 +190,10 @@ impl MessagePiece<'_> {
             for reaction in &self.message.reactions {
                 let mine = reaction.users.contains(&self.app.my_id);
                 let fg = if mine { theme.accent } else { theme.muted };
+                let glyph =
+                    emoji::lookup(&reaction.name).unwrap_or_else(|| format!(":{}:", reaction.name));
                 chips.push(Span::styled(
-                    format!(" :{}: {} ", reaction.name, reaction.count),
+                    format!(" {glyph} {} ", reaction.count),
                     Style::new().fg(fg).bg(theme.panel),
                 ));
                 chips.push(Span::raw(" "));
@@ -395,41 +399,33 @@ pub fn sidebar(
         return;
     }
     let width = area.width as usize;
-    let mut rows: Vec<Line> = Vec::new();
-    let mut cursor_row = 0;
-    let mut previous_direct = None;
-
+    let sidebar_rows = app.sidebar_rows();
+    let cursor_row = app.sidebar_position(&app.sidebar_items());
+    let mut rows: Vec<Line> = Vec::with_capacity(sidebar_rows.len());
     let mut number = 0;
-    for (index, channel) in app.channels.iter().enumerate() {
-        if !app.is_listed(channel) {
-            continue;
-        }
-        number += 1;
-        if style == SidebarStyle::Sections && previous_direct != Some(channel.is_direct()) {
-            if previous_direct.is_some() {
-                rows.push(Line::default());
+
+    for (row_index, row) in sidebar_rows.into_iter().enumerate() {
+        let is_cursor = focused && row_index == cursor_row;
+        let line = match row {
+            SidebarRow::Section {
+                index,
+                collapsed,
+                hidden,
+            } => section_row(
+                &app.sections[index],
+                theme,
+                width,
+                collapsed,
+                hidden,
+                is_cursor,
+            ),
+            SidebarRow::Channel(index) => {
+                number += 1;
+                let number = (style == SidebarStyle::Numbered).then_some(number);
+                channel_row(app, theme, &app.channels[index], width, is_cursor, number)
             }
-            let title = if channel.is_direct() {
-                "▾ Messages directs"
-            } else {
-                "▾ Canaux"
-            };
-            rows.push(Line::styled(title, Style::new().fg(theme.muted)));
-            previous_direct = Some(channel.is_direct());
-        }
-        let is_cursor = index == app.sidebar_cursor;
-        if is_cursor {
-            cursor_row = rows.len();
-        }
-        let number = (style == SidebarStyle::Numbered).then_some(number);
-        rows.push(channel_row(
-            app,
-            theme,
-            channel,
-            width,
-            focused && is_cursor,
-            number,
-        ));
+        };
+        rows.push(line);
     }
 
     let height = area.height as usize;
@@ -438,6 +434,39 @@ pub fn sidebar(
         .min(rows.len().saturating_sub(height));
     let visible: Vec<Line> = rows.into_iter().skip(start).take(height).collect();
     frame.render_widget(Paragraph::new(visible), area);
+}
+
+fn section_row(
+    section: &Section,
+    theme: &Theme,
+    width: usize,
+    collapsed: bool,
+    hidden: usize,
+    is_cursor: bool,
+) -> Line<'static> {
+    let arrow = if collapsed { "▸" } else { "▾" };
+    let marker = if is_cursor { "›" } else { " " };
+    let title = match &section.emoji {
+        Some(emoji) => format!("{emoji} {}", section.name),
+        None => section.name.clone(),
+    };
+    let count = if hidden > 0 {
+        format!(" {hidden}")
+    } else {
+        String::new()
+    };
+    let room = width.saturating_sub(4 + count.width());
+    let line = Line::from(vec![
+        Span::styled(format!("{marker} "), Style::new().fg(theme.accent)),
+        Span::styled(format!("{arrow} "), Style::new().fg(theme.muted)),
+        Span::styled(truncate(&title, room), Style::new().fg(theme.muted).bold()),
+        Span::styled(count, Style::new().fg(theme.border)),
+    ]);
+    if is_cursor {
+        line.style(Style::new().bg(theme.surface))
+    } else {
+        line
+    }
 }
 
 fn channel_row(
@@ -485,11 +514,12 @@ fn channel_row(
     } else {
         Span::raw("  ")
     }];
-    if let Some(number) = number {
-        spans.push(Span::styled(
+    match number {
+        Some(number) => spans.push(Span::styled(
             format!("{number:>2} "),
             Style::new().fg(theme.muted),
-        ));
+        )),
+        None => spans.push(Span::raw("  ")),
     }
     let used: usize = spans.iter().map(|s| s.content.width()).sum();
     let room = width.saturating_sub(used + badge.width() + 1);
@@ -691,10 +721,15 @@ fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
         ];
     }
     let mut hints = match app.focus {
-        Focus::Sidebar => vec![("j/k", "naviguer"), ("⏎", "ouvrir")],
+        Focus::Sidebar => vec![("j/k", "naviguer"), ("⏎", "ouvrir / replier")],
         Focus::Messages => vec![("j/k", "sélection"), ("t", "fil"), ("i", "écrire")],
         Focus::Thread => vec![("i", "répondre"), ("esc", "fermer le fil")],
     };
-    hints.extend([("^k", "aller à"), (",", "réglages"), ("q", "quitter")]);
+    hints.extend([
+        ("^k", "aller à"),
+        ("/", "chercher"),
+        (",", "réglages"),
+        ("q", "quitter"),
+    ]);
     hints
 }
