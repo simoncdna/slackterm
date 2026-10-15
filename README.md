@@ -14,6 +14,12 @@ Temps réel, fils de discussion, recherche, sections : tout au clavier, sans qui
 
 <sub>Tout ce que tu vois ici tourne sur un workspace fictif : <code>slackterm demo</code>, sans compte Slack.</sub>
 
+<br><br>
+
+<a href="docs/media/slackterm.mp4"><img src="docs/media/video.jpg" alt="Vidéo de présentation de slackterm (1 min 40) : lecture et réponse en direct, photos de profil, navigation, recherche, réactions, dispositions et thèmes" width="70%"></a>
+
+<sub>La vidéo de présentation, avec les vraies photos de profil dans le terminal.</sub>
+
 </div>
 
 ---
@@ -205,7 +211,7 @@ src/
 
 ### Refaire les vidéos
 
-Les animations de ce README sont des scripts [VHS](https://github.com/charmbracelet/vhs) joués sur le mode démo : elles se régénèrent en une commande après chaque évolution de l'interface.
+Les animations de ce README sont des scripts [VHS](https://github.com/charmbracelet/vhs) joués sur le mode démo : elles se régénèrent en une commande après chaque évolution de l'interface. La vidéo de présentation, elle, est montée à part avec [Remotion](https://www.remotion.dev).
 
 ```sh
 brew install vhs
