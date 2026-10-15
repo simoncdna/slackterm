@@ -41,8 +41,13 @@ enum Command {
     Demo,
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // Changes the environment, so it must run before the runtime's threads.
+    slackterm::tui::reveal_tmux();
+    tokio::runtime::Runtime::new()?.block_on(run())
+}
+
+async fn run() -> Result<()> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let cli = Cli::parse();
     let store = KeyringStore;

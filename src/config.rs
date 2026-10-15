@@ -90,6 +90,27 @@ impl Choice for Accent {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AvatarStyle {
+    /// Profile pictures, when the terminal can draw images.
+    #[default]
+    Images,
+    Initials,
+    Off,
+}
+
+impl Choice for AvatarStyle {
+    const ALL: &'static [Self] = &[Self::Images, Self::Initials, Self::Off];
+    fn label(self) -> &'static str {
+        match self {
+            Self::Images => "photos",
+            Self::Initials => "initiales",
+            Self::Off => "masqués",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub layout: Layout,
@@ -97,6 +118,8 @@ pub struct Settings {
     pub theme: ThemeName,
     #[serde(default)]
     pub accent: Accent,
+    #[serde(default)]
+    pub avatars: AvatarStyle,
 }
 
 impl Settings {
@@ -191,6 +214,7 @@ mod tests {
             layout: Layout::Stream,
             theme: ThemeName::Gruvbox,
             accent: Accent::Lilas,
+            avatars: AvatarStyle::Initials,
         };
         let toml = settings.to_toml().unwrap();
         assert!(toml.contains("layout = \"stream\""));

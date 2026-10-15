@@ -3,20 +3,25 @@
 
 use chrono::Local;
 use ratatui::Frame;
-use ratatui::layout::{Constraint, Layout, Rect};
+use ratatui::layout::{Constraint, Layout, Rect, Size};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Padding, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use crate::config::AvatarStyle;
 use crate::config::SidebarTab;
-use crate::slack::Message;
-use crate::slack::emoji;
 use crate::slack::mrkdwn::{self, Kind};
+use crate::slack::{File, FileKind, Message};
+use crate::slack::{emoji, media};
+use crate::tui::pictures::{AVATAR_SIZE, Pictures};
 use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow};
 use crate::tui::theme::Theme;
 
-use super::text::{Styled, align_right, day_label, local_time, recency_label, truncate, wrap};
+use super::text::{
+    Styled, align_left, align_right, day_label, format_duration, format_size, local_time,
+    recency_label, truncate, wrap,
+};
 
 /// Consecutive messages from the same author within this delay share a header.
 const GROUPING_SECONDS: i64 = 300;
@@ -32,10 +37,36 @@ pub enum MessageStyle {
     Focus,
 }
 
+/// Rows left blank for a file's preview, drawn over them afterwards.
+pub struct PreviewAnchor {
+    pub line: usize,
+    pub column: u16,
+    pub size: Size,
+    pub key: String,
+}
+
 pub struct Rendered {
     pub lines: Vec<Line<'static>>,
+    /// Header rows that begin with a picture, and whose picture it is.
+    pub avatars: Vec<(usize, String)>,
+    pub previews: Vec<PreviewAnchor>,
     /// Rows of the selected message, to keep it in view.
     pub selected: Option<(usize, usize)>,
+}
+
+impl Rendered {
+    /// Adds a row above the messages, moving down every row that points
+    /// into them: pictures would otherwise be drawn one row too high.
+    pub fn push_front(&mut self, line: Line<'static>) {
+        self.lines.insert(0, line);
+        for (row, _) in &mut self.avatars {
+            *row += 1;
+        }
+        for preview in &mut self.previews {
+            preview.line += 1;
+        }
+        self.selected = self.selected.map(|(start, end)| (start + 1, end + 1));
+    }
 }
 
 pub fn message_lines(
@@ -51,7 +82,10 @@ pub fn message_lines(
     let today = Local::now().date_naive();
     let mut lines = Vec::new();
     let mut selected_rows = None;
+    let mut anchors = Vec::new();
+    let mut previews = Vec::new();
     let mut previous: Option<&Message> = None;
+    let avatars = app.settings.avatars != AvatarStyle::Off && style != MessageStyle::Stream;
 
     for (index, message) in messages.iter().enumerate() {
         let day = local_time(message.epoch_seconds()).date_naive();
@@ -79,12 +113,19 @@ pub fn message_lines(
             grouped,
             is_selected,
             in_thread,
+            avatars,
             width,
         };
-        match style {
-            MessageStyle::Panels => piece.panels(&mut lines),
-            MessageStyle::Stream => piece.stream(&mut lines),
-            MessageStyle::Focus => piece.focus(&mut lines, previous.is_some()),
+        let header = match style {
+            MessageStyle::Panels => piece.panels(&mut lines, &mut previews),
+            MessageStyle::Stream => {
+                piece.stream(&mut lines, &mut previews);
+                None
+            }
+            MessageStyle::Focus => piece.focus(&mut lines, previous.is_some(), &mut previews),
+        };
+        if avatars && let (Some(line), Some(user)) = (header, &message.user) {
+            anchors.push((line, user.clone()));
         }
         if is_selected {
             for line in &mut lines[start..] {
@@ -102,6 +143,8 @@ pub fn message_lines(
     }
     Rendered {
         lines,
+        avatars: anchors,
+        previews,
         selected: selected_rows,
     }
 }
@@ -114,6 +157,8 @@ struct MessagePiece<'a> {
     is_selected: bool,
     /// Inside the thread view, where the reply count would be redundant.
     in_thread: bool,
+    /// Headers start with the author's picture, or their initials.
+    avatars: bool,
     width: usize,
 }
 
@@ -171,7 +216,17 @@ impl MessagePiece<'_> {
             .collect();
         for file in &self.message.files {
             let separator = if body.is_empty() { "" } else { "\n" };
-            body.push((format!("{separator}▤ {}", file.name), muted));
+            body.push((format!("{separator}{}", file_label(file)), muted));
+        }
+        for video in media::video_links(self.message) {
+            let separator = if body.is_empty() { "" } else { "\n" };
+            body.push((
+                format!("{separator}▶ {}", video.service),
+                Style::new().fg(theme.accent).bold(),
+            ));
+            let title = video.title.as_deref().unwrap_or(&video.url);
+            let by = video.author.map(|a| format!(" — {a}")).unwrap_or_default();
+            body.push((format!(" · {title}{by}"), Style::new().fg(theme.link)));
         }
         if body.is_empty() {
             body.push(("[contenu non affiché]".into(), muted.italic()));
@@ -180,6 +235,32 @@ impl MessagePiece<'_> {
             body.push((" (modifié)".into(), muted));
         }
         body
+    }
+
+    /// Leaves room under the body for each file's preview, drawn over these
+    /// rows once downloaded.
+    fn previews(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        prefix: impl Fn() -> Vec<Span<'static>>,
+        column: usize,
+        anchors: &mut Vec<PreviewAnchor>,
+    ) {
+        if !self.app.graphics {
+            return;
+        }
+        for preview in media::previews(self.message) {
+            let size = preview_size(preview.dimensions, self.width.saturating_sub(column));
+            anchors.push(PreviewAnchor {
+                line: lines.len(),
+                column: column as u16,
+                size,
+                key: preview.key,
+            });
+            for _ in 0..size.height {
+                lines.push(Line::from(prefix()));
+            }
+        }
     }
 
     /// Reaction chips and the thread indicator, one row each.
@@ -212,31 +293,104 @@ impl MessagePiece<'_> {
         rows
     }
 
-    fn panels(&self, lines: &mut Vec<Line<'static>>) {
+    /// The author's initials on their color, under where the picture goes.
+    fn badge(&self) -> Span<'static> {
+        let name = self.app.author(self.message);
+        let mut words = name.split_whitespace();
+        let initials: String = match (words.next(), words.next()) {
+            (Some(first), Some(second)) => first
+                .chars()
+                .take(1)
+                .chain(second.chars().take(1))
+                .collect(),
+            (Some(only), None) => only.chars().take(2).collect(),
+            _ => "?".to_string(),
+        };
+        let key = self.message.user.clone().unwrap_or_else(|| name.clone());
+        Span::styled(
+            format!(" {} ", align_left(&initials.to_uppercase(), 2)),
+            Style::new()
+                .fg(self.theme.bg)
+                .bg(self.theme.nick(&key))
+                .bold(),
+        )
+    }
+
+    /// Pushes the message; returns the row of its header, if it has one.
+    fn panels(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        previews: &mut Vec<PreviewAnchor>,
+    ) -> Option<usize> {
+        if self.avatars {
+            return self.with_avatar(lines, false, previews);
+        }
         const PREFIX: usize = 2 + 5 + 2;
         let pad = || Span::raw(" ".repeat(5 + 2));
-        if !self.grouped {
+        let header = (!self.grouped).then(|| {
             lines.push(Line::from(vec![
                 self.marker(true),
                 self.time(),
                 Span::raw("  "),
                 self.author(),
             ]));
-        }
+            lines.len() - 1
+        });
         let body = wrap(&self.body(), self.width.saturating_sub(PREFIX));
         for (i, row) in body.into_iter().enumerate() {
             let mut spans = vec![self.marker(self.grouped && i == 0), pad()];
             spans.extend(to_spans(row));
             lines.push(Line::from(spans));
         }
+        self.previews(lines, || vec![self.marker(false), pad()], PREFIX, previews);
         for extra in self.extras() {
             let mut spans = vec![self.marker(false), pad()];
             spans.extend(extra);
             lines.push(Line::from(spans));
         }
+        header
     }
 
-    fn stream(&self, lines: &mut Vec<Line<'static>>) {
+    /// Picture (or initials) on the left of the header and first body row,
+    /// author then time on the header, body below.
+    fn with_avatar(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        follows_message: bool,
+        previews: &mut Vec<PreviewAnchor>,
+    ) -> Option<usize> {
+        const PREFIX: usize = 2 + 4 + 1;
+        let pad = || Span::raw(" ".repeat(4 + 1));
+        let header = (!self.grouped).then(|| {
+            if follows_message {
+                lines.push(Line::default());
+            }
+            lines.push(Line::from(vec![
+                self.marker(true),
+                self.badge(),
+                Span::raw(" "),
+                self.author(),
+                Span::raw("  "),
+                self.time(),
+            ]));
+            lines.len() - 1
+        });
+        let body = wrap(&self.body(), self.width.saturating_sub(PREFIX));
+        for (i, row) in body.into_iter().enumerate() {
+            let mut spans = vec![self.marker(self.grouped && i == 0), pad()];
+            spans.extend(to_spans(row));
+            lines.push(Line::from(spans));
+        }
+        self.previews(lines, || vec![self.marker(false), pad()], PREFIX, previews);
+        for extra in self.extras() {
+            let mut spans = vec![self.marker(false), pad()];
+            spans.extend(extra);
+            lines.push(Line::from(spans));
+        }
+        header
+    }
+
+    fn stream(&self, lines: &mut Vec<Line<'static>>, previews: &mut Vec<PreviewAnchor>) {
         const NICK: usize = 16;
         const PREFIX: usize = 5 + 1 + NICK + 3;
         let bar = || Span::styled(" │ ", Style::new().fg(self.theme.border));
@@ -259,6 +413,7 @@ impl MessagePiece<'_> {
             spans.extend(to_spans(row));
             lines.push(Line::from(spans));
         }
+        self.previews(lines, || vec![blank(), bar()], PREFIX, previews);
         for extra in self.extras() {
             let mut spans = vec![blank(), bar()];
             spans.extend(extra);
@@ -266,8 +421,16 @@ impl MessagePiece<'_> {
         }
     }
 
-    fn focus(&self, lines: &mut Vec<Line<'static>>, follows_message: bool) {
-        if !self.grouped {
+    fn focus(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        follows_message: bool,
+        previews: &mut Vec<PreviewAnchor>,
+    ) -> Option<usize> {
+        if self.avatars {
+            return self.with_avatar(lines, follows_message, previews);
+        }
+        let header = (!self.grouped).then(|| {
             if follows_message {
                 lines.push(Line::default());
             }
@@ -277,19 +440,54 @@ impl MessagePiece<'_> {
                 Span::raw("  "),
                 self.time(),
             ]));
-        }
+            lines.len() - 1
+        });
         let body = wrap(&self.body(), self.width.saturating_sub(2));
         for (i, row) in body.into_iter().enumerate() {
             let mut spans = vec![self.marker(self.grouped && i == 0)];
             spans.extend(to_spans(row));
             lines.push(Line::from(spans));
         }
+        self.previews(lines, || vec![self.marker(false)], 2, previews);
         for extra in self.extras() {
             let mut spans = vec![self.marker(false)];
             spans.extend(extra);
             lines.push(Line::from(spans));
         }
+        header
     }
+}
+
+/// `▶ demo.mp4 · 0:19 · 10,7 Mo`
+fn file_label(file: &File) -> String {
+    let (icon, details) = match file.kind() {
+        FileKind::Video => ("▶", file.duration_ms.map(format_duration)),
+        FileKind::Image => (
+            "▣",
+            file.original_w
+                .zip(file.original_h)
+                .map(|(w, h)| format!("{w}×{h}")),
+        ),
+        FileKind::Other => ("▤", None),
+    };
+    let size = (file.size > 0).then(|| format_size(file.size));
+    let mut label = format!("{icon} {}", file.name);
+    for detail in details.into_iter().chain(size) {
+        label.push_str(" · ");
+        label.push_str(&detail);
+    }
+    label
+}
+
+/// At most 36 columns wide and 12 rows tall, keeping the picture's shape
+/// (a cell is about twice as tall as it is wide).
+fn preview_size(dimensions: Option<(u32, u32)>, available: usize) -> Size {
+    let (w, h) = dimensions.unwrap_or((16, 9));
+    let (w, h) = (w as f32, h as f32);
+    let max_width = available.clamp(8, 36) as f32;
+    let height = (max_width * h / w / 2.0).round().clamp(3.0, 12.0);
+    let width = (height * 2.0 * w / h).round().clamp(4.0, max_width);
+    Size::new(width as u16, height as u16)
 }
 
 fn to_spans(row: Vec<Styled>) -> Vec<Span<'static>> {
@@ -325,20 +523,70 @@ pub fn separator(label: &str, width: usize, text: Color, rule: Color) -> Line<'s
 
 /// Draws the message list anchored to the bottom, scrolled so the selected
 /// message stays visible.
+/// The rows of a rendered message list that made it on screen.
+pub struct Viewport {
+    /// Index of the first row shown.
+    pub first: usize,
+    pub shown: usize,
+    /// Screen row of the first row shown.
+    pub top: u16,
+}
+
+/// Draws the message list anchored to the bottom, scrolled so the selected
+/// message stays visible, then the authors' pictures over their initials.
 pub fn render_messages(
+    frame: &mut Frame,
+    area: Rect,
+    mut rendered: Rendered,
+    theme: &Theme,
+    loading: bool,
+    app: &App,
+    pictures: &mut Pictures,
+) {
+    let avatars = std::mem::take(&mut rendered.avatars);
+    let previews = std::mem::take(&mut rendered.previews);
+    let Some(viewport) = render_lines(frame, area, rendered, theme, loading) else {
+        return;
+    };
+    // Only pictures entirely on screen are drawn.
+    let spot = |line: usize, column: u16, size: Size| {
+        let fits = line >= viewport.first
+            && line + size.height as usize <= viewport.first + viewport.shown;
+        fits.then(|| Rect {
+            x: area.x + column,
+            y: viewport.top + (line - viewport.first) as u16,
+            width: size.width,
+            height: size.height,
+        })
+    };
+    if app.settings.avatars == AvatarStyle::Images {
+        for (line, user) in avatars {
+            if let Some(area) = spot(line, 2, AVATAR_SIZE) {
+                pictures.draw(frame, area, &user, &app.pictures);
+            }
+        }
+    }
+    for preview in previews {
+        if let Some(area) = spot(preview.line, preview.column, preview.size) {
+            pictures.draw(frame, area, &preview.key, &app.pictures);
+        }
+    }
+}
+
+fn render_lines(
     frame: &mut Frame,
     area: Rect,
     rendered: Rendered,
     theme: &Theme,
     loading: bool,
-) {
+) -> Option<Viewport> {
     if loading && rendered.lines.is_empty() {
         let text = Line::styled("chargement…", Style::new().fg(theme.muted)).centered();
         frame.render_widget(
             Paragraph::new(text),
             area.centered_vertically(Constraint::Length(1)),
         );
-        return;
+        return None;
     }
     if rendered.lines.is_empty() {
         let text = Line::styled(
@@ -350,7 +598,7 @@ pub fn render_messages(
             Paragraph::new(text),
             area.centered_vertically(Constraint::Length(1)),
         );
-        return;
+        return None;
     }
 
     let height = area.height as usize;
@@ -375,7 +623,13 @@ pub fn render_messages(
         height: visible.len() as u16,
         ..area
     };
+    let shown = visible.len();
     frame.render_widget(Paragraph::new(visible), target);
+    Some(Viewport {
+        first: start,
+        shown,
+        top: target.y,
+    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -798,12 +1052,16 @@ fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
         Focus::Messages => vec![
             ("j/k", "sélection"),
             ("r", "réagir"),
+            ("o", "ouvrir"),
+            ("p", "lire"),
             ("t", "fil"),
             ("i", "écrire"),
         ],
         Focus::Thread => vec![
             ("j/k", "sélection"),
             ("r", "réagir"),
+            ("o", "ouvrir"),
+            ("p", "lire"),
             ("i", "répondre"),
             ("esc", "fermer le fil"),
         ],

@@ -5,10 +5,11 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyEvent;
 
-use crate::config::{Choice, Layout, Settings, SidebarState, SidebarTab};
+use crate::config::{AvatarStyle, Choice, Layout, Settings, SidebarState, SidebarTab};
+use crate::slack::media::{self, Playable};
 use crate::slack::rtm::RtmEvent;
 use crate::slack::{
-    ChannelSection, Conversation, ConversationCount, Message, SearchMatch, User, mrkdwn,
+    ChannelSection, Conversation, ConversationCount, FileKind, Message, SearchMatch, User, mrkdwn,
 };
 
 use super::input::Input;
@@ -47,6 +48,15 @@ pub enum ApiEvent {
         result: Result<Vec<SearchMatch>, String>,
     },
     CustomEmoji(HashMap<String, String>),
+    /// A profile picture (keyed by user id) or a preview (`file:<id>`).
+    Picture {
+        key: String,
+        image: image::DynamicImage,
+    },
+    /// Something to tell the user in the status bar.
+    Notice(String),
+    /// A video file is downloaded, at this path.
+    PlayReady(String),
     /// Slack refused a reaction that was already shown: undo it.
     ReactionFailed {
         channel: String,
@@ -67,6 +77,14 @@ pub enum ApiEvent {
     Counts(Vec<ConversationCount>),
     CountsUnavailable,
     Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileToOpen {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub video: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,6 +115,19 @@ pub enum Command {
     SaveSidebar(SidebarState),
     Search(String),
     LoadEmoji,
+    /// Profile pictures to fetch: user id and picture URL.
+    LoadAvatars(Vec<(String, String)>),
+    /// Previews of files to fetch: `file:<id>` key and URL.
+    LoadPreviews(Vec<(String, String)>),
+    /// Download the files of a message and open them.
+    OpenFiles(Vec<FileToOpen>),
+    /// Open a web link in the browser.
+    OpenUrl(String),
+    /// Download a video file, to play it once ready.
+    DownloadToPlay(FileToOpen),
+    /// Play a video file or link in the terminal, which the interface hands
+    /// over meanwhile. Run by the event loop itself, not the executor.
+    Play(String),
     React {
         channel: String,
         ts: String,
@@ -120,7 +151,7 @@ pub fn initial_commands() -> Vec<Command> {
 }
 
 pub fn update(app: &mut App, event: Event) -> Vec<Command> {
-    match event {
+    let mut commands = match event {
         Event::Key(key) => keys::on_key(app, key),
         Event::Paste(text) => {
             on_paste(app, &text);
@@ -128,7 +159,54 @@ pub fn update(app: &mut App, event: Event) -> Vec<Command> {
         }
         Event::Api(event) => on_api(app, event),
         Event::Rtm(event) => on_rtm(app, event),
+    };
+    commands.extend(request_pictures(app));
+    commands
+}
+
+/// Asks for the pictures on screen not requested yet: the authors' when
+/// profile pictures are shown, and file previews when the terminal can
+/// draw them.
+fn request_pictures(app: &mut App) -> Vec<Command> {
+    let thread = app.thread.iter().flat_map(|t| t.messages.iter());
+    let shown: Vec<&Message> = app.current_messages().iter().chain(thread).collect();
+
+    let mut avatars = Vec::new();
+    if app.settings.avatars == AvatarStyle::Images {
+        for user in shown.iter().filter_map(|m| m.user.as_deref()) {
+            let url = app
+                .users
+                .get(user)
+                .and_then(|u| u.profile.image_72.as_deref());
+            if let Some(url) = url
+                && !app.pictures_requested.contains(user)
+                && !avatars.iter().any(|(id, _)| id == user)
+            {
+                avatars.push((user.to_string(), url.to_string()));
+            }
+        }
     }
+    let mut previews = Vec::new();
+    if app.graphics {
+        for preview in shown.iter().flat_map(|m| media::previews(m)) {
+            if !app.pictures_requested.contains(&preview.key)
+                && !previews.iter().any(|(key, _)| *key == preview.key)
+            {
+                previews.push((preview.key, preview.url));
+            }
+        }
+    }
+
+    let requested = avatars.iter().chain(&previews).map(|(key, _)| key.clone());
+    app.pictures_requested.extend(requested.collect::<Vec<_>>());
+    let mut commands = Vec::new();
+    if !avatars.is_empty() {
+        commands.push(Command::LoadAvatars(avatars));
+    }
+    if !previews.is_empty() {
+        commands.push(Command::LoadPreviews(previews));
+    }
+    commands
 }
 
 fn on_paste(app: &mut App, text: &str) {
@@ -270,6 +348,15 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
             app.apply_counts();
             Vec::new()
         }
+        ApiEvent::Picture { key, image } => {
+            app.pictures.insert(key, image);
+            Vec::new()
+        }
+        ApiEvent::Notice(notice) => {
+            app.notice = Some(notice);
+            Vec::new()
+        }
+        ApiEvent::PlayReady(path) => vec![Command::Play(path)],
         ApiEvent::CustomEmoji(emoji) => {
             app.custom_emoji = emoji.into_keys().collect();
             app.custom_emoji.sort();
@@ -546,6 +633,60 @@ fn toggle_reaction(app: &mut App, target: &ReactionTarget, name: &str) -> Vec<Co
         name: name.to_string(),
         add,
     }]
+}
+
+/// `o`: the files of the message, downloaded and opened, or else its first
+/// link, opened in the browser.
+fn open_files(app: &mut App) -> Vec<Command> {
+    let Some(message) = target_message(app) else {
+        return Vec::new();
+    };
+    let files: Vec<FileToOpen> = message.files.iter().filter_map(file_to_open).collect();
+    if !files.is_empty() {
+        return vec![Command::OpenFiles(files)];
+    }
+    if let Some(link) = mrkdwn::links(&message.text).into_iter().next() {
+        return vec![Command::OpenUrl(link)];
+    }
+    app.notice = Some("rien à ouvrir dans ce message".into());
+    Vec::new()
+}
+
+/// `p`: the message's video, played in the terminal; a file is downloaded
+/// first.
+fn play(app: &mut App) -> Vec<Command> {
+    let Some(message) = target_message(app) else {
+        return Vec::new();
+    };
+    match media::playable(&message) {
+        Some(Playable::File(index)) => match file_to_open(&message.files[index]) {
+            Some(file) => vec![Command::DownloadToPlay(file)],
+            None => {
+                app.notice = Some("cette vidéo n'est pas téléchargeable".into());
+                Vec::new()
+            }
+        },
+        Some(Playable::Link(url)) => vec![Command::Play(url)],
+        None => {
+            app.notice = Some("aucune vidéo dans ce message".into());
+            Vec::new()
+        }
+    }
+}
+
+/// The message `r`, `o` and `p` act on.
+fn target_message(app: &App) -> Option<Message> {
+    let target = app.reaction_target()?;
+    app.find_message(&target.channel, &target.ts).cloned()
+}
+
+fn file_to_open(file: &crate::slack::File) -> Option<FileToOpen> {
+    Some(FileToOpen {
+        id: file.id.clone(),
+        name: file.name.clone(),
+        url: file.download_url()?.to_string(),
+        video: file.kind() == FileKind::Video,
+    })
 }
 
 mod keys;

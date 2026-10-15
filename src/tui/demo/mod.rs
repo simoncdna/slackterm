@@ -174,6 +174,24 @@ impl Demo {
                     }
                 }
             }
+            // Shrunk like the Slack executor's, so they look the same.
+            Command::LoadAvatars(pictures) => {
+                for (user, _) in pictures {
+                    let image = content::avatar(&user)
+                        .and_then(|bytes| image::load_from_memory(bytes).ok())
+                        .map(|image| image.thumbnail(64, 64));
+                    if let Some(image) = image {
+                        send(ApiEvent::Picture { key: user, image });
+                    }
+                }
+            }
+            // No files in the demo to preview.
+            Command::LoadPreviews(_) => {}
+            Command::OpenFiles(_) | Command::OpenUrl(_) | Command::DownloadToPlay(_) => send(
+                ApiEvent::Notice("les fichiers de la démo ne s'ouvrent pas".into()),
+            ),
+            // Run by the event loop, which never hands it to the demo.
+            Command::Play(_) => {}
             Command::MarkRead { .. } | Command::SaveSettings(_) | Command::SaveSidebar(_) => {}
         }
     }
@@ -473,6 +491,15 @@ mod tests {
         let found = state.search("notifications push");
         assert_eq!(found.len(), 1);
         assert!(found[0].thread_ts().is_some());
+    }
+
+    #[test]
+    fn every_member_has_a_profile_picture() {
+        for user in content::build().users {
+            assert!(user.profile.image_72.is_some(), "{}", user.id);
+            let bytes = content::avatar(&user.id).unwrap();
+            assert!(image::load_from_memory(bytes).is_ok(), "{}", user.id);
+        }
     }
 
     #[test]

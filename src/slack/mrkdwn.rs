@@ -62,6 +62,25 @@ pub fn parse(text: &str, my_id: &str, user_name: impl Fn(&str) -> Option<String>
     segments
 }
 
+/// The web links of a raw message, in order: `<https://…|label>` and
+/// `<https://…>` references.
+pub fn links(text: &str) -> Vec<String> {
+    let mut links = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('<') {
+        let Some(end) = rest[start..].find('>') else {
+            break;
+        };
+        let inner = &rest[start + 1..start + end];
+        let target = inner.split_once('|').map_or(inner, |(target, _)| target);
+        if target.starts_with("https://") || target.starts_with("http://") {
+            links.push(target.to_string());
+        }
+        rest = &rest[start + end + 1..];
+    }
+    links
+}
+
 /// Whether a raw message notifies the user: a direct mention or a broadcast.
 pub fn mentions(text: &str, my_id: &str) -> bool {
     text.contains(&format!("<@{my_id}"))
@@ -199,6 +218,14 @@ mod tests {
                 (" ".into(), Kind::Text),
                 (":tada:".into(), Kind::Code),
             ]
+        );
+    }
+
+    #[test]
+    fn lists_web_links() {
+        assert_eq!(
+            links("voir <https://youtu.be/abc|ça> et <https://x.dev> mais pas <@U1> ni <#C1|dev>"),
+            ["https://youtu.be/abc", "https://x.dev"]
         );
     }
 

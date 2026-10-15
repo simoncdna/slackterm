@@ -104,10 +104,29 @@ fn users() -> Vec<User> {
             "id": id,
             "name": name,
             "real_name": real_name,
-            "profile": {"display_name": first, "real_name": real_name},
+            "profile": {
+                "display_name": first,
+                "real_name": real_name,
+                "image_72": format!("https://avatars.atelier-nova.fr/{name}.jpg"),
+            },
         }))
     })
     .collect()
+}
+
+/// A member's profile picture, as a JPEG file. The faces were generated
+/// (thispersondoesnotexist.com): nobody real is pictured.
+pub fn avatar(user: &str) -> Option<&'static [u8]> {
+    let picture: &[u8] = match user {
+        ME => include_bytes!("avatars/alex.jpg"),
+        CAMILLE => include_bytes!("avatars/camille.jpg"),
+        HUGO => include_bytes!("avatars/hugo.jpg"),
+        INES => include_bytes!("avatars/ines.jpg"),
+        NATHAN => include_bytes!("avatars/nathan.jpg"),
+        SARAH => include_bytes!("avatars/sarah.jpg"),
+        _ => return None,
+    };
+    Some(picture)
 }
 
 fn conversations() -> Vec<Conversation> {
@@ -649,6 +668,7 @@ impl Builder {
             .iter()
             .map(|name| File {
                 name: name.to_string(),
+                ..File::default()
             })
             .collect();
     }
@@ -674,6 +694,7 @@ pub fn message(ts: &str, user: &str, text: &str) -> Message {
         edited: None,
         reactions: Vec::new(),
         files: Vec::new(),
+        attachments: Vec::new(),
     }
 }
 

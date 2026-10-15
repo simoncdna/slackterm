@@ -1,13 +1,16 @@
 mod client;
 pub mod emoji;
+pub mod media;
 pub mod mrkdwn;
 pub mod rtm;
 mod types;
 
-pub use client::{AuthTest, DEFAULT_API_BASE, HistoryPage, RtmConnect, SlackClient, SlackError};
+pub use client::{
+    AuthTest, DEFAULT_API_BASE, HistoryPage, RtmConnect, SlackClient, SlackError, is_slack_file_url,
+};
 pub use types::{
-    ChannelSection, Conversation, ConversationCount, File, HIGHLIGHT_END, HIGHLIGHT_START, Message,
-    Reaction, SearchChannel, SearchMatch, User, order_sections,
+    Attachment, ChannelSection, Conversation, ConversationCount, File, FileKind, HIGHLIGHT_END,
+    HIGHLIGHT_START, Message, Reaction, SearchChannel, SearchMatch, User, order_sections,
 };
 
 #[cfg(test)]

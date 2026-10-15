@@ -17,6 +17,9 @@ pub struct UserProfile {
     pub display_name: String,
     #[serde(default)]
     pub real_name: String,
+    /// Profile picture, 72 pixels wide.
+    #[serde(default)]
+    pub image_72: Option<String>,
 }
 
 impl User {
@@ -194,6 +197,35 @@ pub struct Message {
     pub reactions: Vec<Reaction>,
     #[serde(default)]
     pub files: Vec<File>,
+    /// Cards Slack adds under links (YouTube videos, articles…), and bots'
+    /// formatted content.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct Attachment {
+    #[serde(default)]
+    pub service_name: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub author_name: Option<String>,
+    #[serde(default)]
+    pub original_url: Option<String>,
+    #[serde(default)]
+    pub from_url: Option<String>,
+    #[serde(default)]
+    pub title_link: Option<String>,
+    #[serde(default)]
+    pub thumb_url: Option<String>,
+    #[serde(default)]
+    pub thumb_width: Option<u32>,
+    #[serde(default)]
+    pub thumb_height: Option<u32>,
+    /// Present when the link is a video Slack can embed.
+    #[serde(default)]
+    pub video_html: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -211,10 +243,83 @@ pub struct Reaction {
     pub users: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct File {
     #[serde(default)]
+    pub id: String,
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
+    pub mimetype: String,
+    #[serde(default)]
+    pub size: u64,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+    #[serde(default)]
+    pub original_w: Option<u32>,
+    #[serde(default)]
+    pub original_h: Option<u32>,
+    /// The file itself; needs the session to download.
+    #[serde(default)]
+    pub url_private_download: Option<String>,
+    #[serde(default)]
+    pub url_private: Option<String>,
+    /// Still image of a video.
+    #[serde(default)]
+    pub thumb_video: Option<String>,
+    #[serde(default)]
+    pub thumb_video_w: Option<u32>,
+    #[serde(default)]
+    pub thumb_video_h: Option<u32>,
+    #[serde(default)]
+    pub thumb_360: Option<String>,
+    #[serde(default)]
+    pub thumb_360_w: Option<u32>,
+    #[serde(default)]
+    pub thumb_360_h: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileKind {
+    Video,
+    Image,
+    Other,
+}
+
+impl File {
+    pub fn kind(&self) -> FileKind {
+        match self.mimetype.split('/').next() {
+            Some("video") => FileKind::Video,
+            Some("image") => FileKind::Image,
+            _ => FileKind::Other,
+        }
+    }
+
+    pub fn download_url(&self) -> Option<&str> {
+        self.url_private_download
+            .as_deref()
+            .or(self.url_private.as_deref())
+    }
+
+    /// A small picture of the file to show in the conversation, with its
+    /// width and height when known.
+    pub fn preview(&self) -> Option<(&str, Option<(u32, u32)>)> {
+        let size = |w: Option<u32>, h: Option<u32>| w.zip(h).filter(|(w, h)| *w > 0 && *h > 0);
+        let original = size(self.original_w, self.original_h);
+        match self.kind() {
+            FileKind::Video => self.thumb_video.as_deref().map(|url| {
+                (
+                    url,
+                    size(self.thumb_video_w, self.thumb_video_h).or(original),
+                )
+            }),
+            FileKind::Image => self
+                .thumb_360
+                .as_deref()
+                .map(|url| (url, size(self.thumb_360_w, self.thumb_360_h).or(original))),
+            FileKind::Other => None,
+        }
+    }
 }
 
 impl Message {
@@ -284,6 +389,7 @@ pub(crate) fn message(ts: &str, user: &str, text: &str) -> Message {
         edited: None,
         reactions: Vec::new(),
         files: Vec::new(),
+        attachments: Vec::new(),
     }
 }
 
@@ -361,6 +467,38 @@ mod tests {
             .map(|s| s.channel_section_id.as_str())
             .collect();
         assert_eq!(ids, ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn files_know_their_kind_and_preview() {
+        let file: File = serde_json::from_value(serde_json::json!({
+            "id": "F1", "name": "demo.mp4", "mimetype": "video/mp4", "size": 10747897,
+            "duration_ms": 19686, "thumb_video": "https://files.slack.com/thumb.jpg",
+            "url_private_download": "https://files.slack.com/demo.mp4"
+        }))
+        .unwrap();
+        assert_eq!(file.kind(), FileKind::Video);
+        assert_eq!(
+            file.preview(),
+            Some(("https://files.slack.com/thumb.jpg", None))
+        );
+        assert_eq!(
+            file.download_url(),
+            Some("https://files.slack.com/demo.mp4")
+        );
+
+        let image: File = serde_json::from_value(serde_json::json!({
+            "mimetype": "image/png", "thumb_360": "t.png", "thumb_360_w": 360, "thumb_360_h": 219
+        }))
+        .unwrap();
+        assert_eq!(image.preview(), Some(("t.png", Some((360, 219)))));
+
+        let pdf = File {
+            mimetype: "application/pdf".into(),
+            ..File::default()
+        };
+        assert_eq!(pdf.kind(), FileKind::Other);
+        assert!(pdf.preview().is_none());
     }
 
     #[test]

@@ -122,6 +122,8 @@ fn on_messages_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Char('G') | KeyCode::End => app.selected = None,
         KeyCode::Char('t') => return open_thread(app),
         KeyCode::Char('r') => open_emoji_picker(app),
+        KeyCode::Char('o') => return open_files(app),
+        KeyCode::Char('p') => return play(app),
         KeyCode::Enter => app.mode = Mode::Insert,
         KeyCode::Char('h') | KeyCode::Left => focus_sidebar(app),
         _ => {}
@@ -145,6 +147,8 @@ fn on_thread_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         }
         KeyCode::Char('G') | KeyCode::End => thread.selected = None,
         KeyCode::Char('r') => open_emoji_picker(app),
+        KeyCode::Char('o') => return open_files(app),
+        KeyCode::Char('p') => return play(app),
         _ => {}
     }
     Vec::new()

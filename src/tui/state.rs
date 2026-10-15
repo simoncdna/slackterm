@@ -290,7 +290,7 @@ pub enum Overlay {
     Emoji(EmojiPicker),
 }
 
-pub const SETTINGS_ROWS: usize = 3;
+pub const SETTINGS_ROWS: usize = 4;
 
 pub struct SwitcherResult {
     pub channel: usize,
@@ -325,6 +325,12 @@ pub struct App {
     pub jump: Option<Jump>,
     /// Names of the workspace's custom emoji.
     pub custom_emoji: Vec<String>,
+    /// The terminal can draw pictures.
+    pub graphics: bool,
+    /// Pictures asked for, received or not: user ids for profile pictures,
+    /// `file:<id>` for previews.
+    pub pictures_requested: HashSet<String>,
+    pub pictures: HashMap<String, image::DynamicImage>,
     pub histories: HashMap<String, History>,
     /// Selected message in the current channel; `None` follows the latest.
     pub selected: Option<usize>,
@@ -364,6 +370,9 @@ impl App {
             sidebar_cursor: None,
             jump: None,
             custom_emoji: Vec::new(),
+            graphics: false,
+            pictures_requested: HashSet::new(),
+            pictures: HashMap::new(),
             histories: HashMap::new(),
             selected: None,
             thread: None,

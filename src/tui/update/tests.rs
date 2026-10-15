@@ -757,3 +757,288 @@ fn reactions_in_a_thread_go_to_the_selected_reply() {
     let commands = react_with(&mut app, "+1");
     assert!(matches!(&commands[..], [Command::React { ts, .. }] if ts == "3.0"));
 }
+
+fn user_with_picture(id: &str, name: &str) -> crate::slack::User {
+    serde_json::from_value(serde_json::json!({
+        "id": id,
+        "name": name,
+        "profile": {"image_72": format!("https://avatars.example/{id}.png")}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn pictures_are_requested_once_for_authors_on_screen() {
+    let mut app = app();
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::Users(vec![
+            user_with_picture("U2", "camille"),
+            user_with_picture("U9", "absent"),
+        ])),
+    );
+    assert!(commands.is_empty(), "no message shown yet");
+
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![message("1.0", "U2", "salut"), message("2.0", "U2", "re")],
+            has_more: false,
+        }),
+    );
+    assert!(commands.contains(&Command::LoadAvatars(vec![(
+        "U2".into(),
+        "https://avatars.example/U2.png".into()
+    )])));
+
+    let commands = update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C1".into(),
+            message: message("3.0", "U2", "encore"),
+        }),
+    );
+    assert!(
+        !commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadAvatars(_)))
+    );
+}
+
+#[test]
+fn no_pictures_are_fetched_when_initials_are_chosen() {
+    let mut app = app();
+    app.settings.avatars = crate::config::AvatarStyle::Initials;
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Users(vec![user_with_picture("U2", "camille")])),
+    );
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![message("1.0", "U2", "salut")],
+            has_more: false,
+        }),
+    );
+    assert!(
+        !commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadAvatars(_)))
+    );
+}
+
+#[test]
+fn the_avatar_setting_is_the_last_row() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char(',')));
+    for _ in 0..3 {
+        update(&mut app, key(KeyCode::Char('j')));
+    }
+    update(&mut app, key(KeyCode::Char('l')));
+    assert_eq!(app.settings.avatars, crate::config::AvatarStyle::Initials);
+    assert_eq!(app.settings.layout, Layout::Panels);
+}
+
+fn video_file() -> crate::slack::File {
+    serde_json::from_value(serde_json::json!({
+        "id": "F1",
+        "name": "demo.mp4",
+        "mimetype": "video/mp4",
+        "size": 10747897,
+        "duration_ms": 19686,
+        "thumb_video": "https://files.slack.com/thumb.jpg",
+        "url_private_download": "https://files.slack.com/demo.mp4"
+    }))
+    .unwrap()
+}
+
+/// `loaded_app` whose latest message carries a video.
+fn app_with_video(graphics: bool) -> App {
+    let mut app = app();
+    app.graphics = graphics;
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let mut with_video = message("2.0", "U2", "regardez");
+    with_video.files.push(video_file());
+    update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![message("1.0", "U2", "salut"), with_video],
+            has_more: false,
+        }),
+    );
+    app
+}
+
+#[test]
+fn previews_are_requested_once_when_the_terminal_draws_pictures() {
+    let mut app = app();
+    app.graphics = true;
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let mut with_video = message("2.0", "U2", "regardez");
+    with_video.files.push(video_file());
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![with_video],
+            has_more: false,
+        }),
+    );
+    assert!(commands.contains(&Command::LoadPreviews(vec![(
+        "file:F1".into(),
+        "https://files.slack.com/thumb.jpg".into()
+    )])));
+
+    let commands = update(&mut app, key(KeyCode::Char('j')));
+    assert!(
+        !commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPreviews(_)))
+    );
+}
+
+#[test]
+fn no_previews_without_graphics() {
+    let mut app = app_with_video(false);
+    let commands = update(&mut app, key(KeyCode::Char('j')));
+    assert!(
+        !commands
+            .iter()
+            .any(|c| matches!(c, Command::LoadPreviews(_)))
+    );
+    assert!(app.pictures_requested.is_empty());
+}
+
+#[test]
+fn o_downloads_and_opens_the_files_of_the_message() {
+    let mut app = app_with_video(false);
+    app.focus = Focus::Messages;
+    let commands = update(&mut app, key(KeyCode::Char('o')));
+    assert_eq!(
+        commands,
+        [Command::OpenFiles(vec![FileToOpen {
+            id: "F1".into(),
+            name: "demo.mp4".into(),
+            url: "https://files.slack.com/demo.mp4".into(),
+            video: true,
+        }])]
+    );
+}
+
+#[test]
+fn o_on_a_message_without_files_says_so() {
+    let mut app = app_with_video(false);
+    app.focus = Focus::Messages;
+    update(&mut app, key(KeyCode::Char('k')));
+    update(&mut app, key(KeyCode::Char('k')));
+    assert!(update(&mut app, key(KeyCode::Char('o'))).is_empty());
+    assert!(
+        app.notice
+            .as_deref()
+            .is_some_and(|n| n.contains("rien à ouvrir"))
+    );
+}
+
+fn app_with_message(build: impl FnOnce(&mut crate::slack::Message)) -> App {
+    let mut app = app();
+    app.graphics = true;
+    app.focus = Focus::Messages;
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let mut msg = message("1.0", "U2", "regardez <https://youtu.be/dQw4w9WgXcQ>");
+    build(&mut msg);
+    update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![msg],
+            has_more: false,
+        }),
+    );
+    app
+}
+
+#[test]
+fn youtube_thumbnails_are_requested() {
+    let mut app = app();
+    app.graphics = true;
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Conversations(vec![conversation("C1", "general")])),
+    );
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::History {
+            channel: "C1".into(),
+            messages: vec![message("1.0", "U2", "<https://youtu.be/dQw4w9WgXcQ>")],
+            has_more: false,
+        }),
+    );
+    assert!(commands.contains(&Command::LoadPreviews(vec![(
+        "link:youtube:dQw4w9WgXcQ".into(),
+        "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg".into()
+    )])));
+}
+
+#[test]
+fn p_plays_a_youtube_link_in_the_terminal() {
+    let mut app = app_with_message(|_| {});
+    let commands = update(&mut app, key(KeyCode::Char('p')));
+    assert_eq!(
+        commands,
+        [Command::Play("https://youtu.be/dQw4w9WgXcQ".into())]
+    );
+}
+
+#[test]
+fn p_downloads_a_video_file_then_plays_it() {
+    let mut app = app_with_message(|msg| msg.files.push(video_file()));
+    let commands = update(&mut app, key(KeyCode::Char('p')));
+    assert!(matches!(&commands[..], [Command::DownloadToPlay(file)] if file.id == "F1"));
+
+    let commands = update(
+        &mut app,
+        Event::Api(ApiEvent::PlayReady("/cache/F1-demo.mp4".into())),
+    );
+    assert_eq!(commands, [Command::Play("/cache/F1-demo.mp4".into())]);
+}
+
+#[test]
+fn p_without_a_video_says_so() {
+    let mut app = app_with_message(|msg| msg.text = "pas de vidéo ici".into());
+    assert!(update(&mut app, key(KeyCode::Char('p'))).is_empty());
+    assert!(
+        app.notice
+            .as_deref()
+            .is_some_and(|n| n.contains("aucune vidéo"))
+    );
+}
+
+#[test]
+fn o_opens_the_first_link_when_there_is_no_file() {
+    let mut app = app_with_message(|_| {});
+    let commands = update(&mut app, key(KeyCode::Char('o')));
+    assert_eq!(
+        commands,
+        [Command::OpenUrl("https://youtu.be/dQw4w9WgXcQ".into())]
+    );
+}

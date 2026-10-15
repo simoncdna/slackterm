@@ -2,6 +2,8 @@ mod demo;
 mod executor;
 mod fuzzy;
 mod input;
+mod pictures;
+mod player;
 mod state;
 mod theme;
 mod ui;
@@ -26,6 +28,8 @@ use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
 
 use state::App;
 use update::{Command, Event, initial_commands, update};
+
+pub use pictures::reveal_tmux;
 
 pub async fn run(session: Session) -> Result<()> {
     let workspace = session
@@ -88,8 +92,33 @@ async fn run_app(
     }
 
     let mut terminal = ratatui::try_init()?;
+    let mut enhanced = enter_interface_mode();
+    let mut pictures = pictures::Pictures::detect();
+    app.graphics = pictures.available();
+    let mut screen = Screen {
+        terminal: &mut terminal,
+        enhanced: &mut enhanced,
+        pictures: &mut pictures,
+    };
+    let result = event_loop(&mut screen, app, &mut events, &execute).await;
+
+    leave_interface_mode(enhanced);
+    ratatui::restore();
+    result
+}
+
+/// The terminal while the interface owns it.
+struct Screen<'a> {
+    terminal: &'a mut DefaultTerminal,
+    /// Keys are reported with their modifiers (Shift+Enter).
+    enhanced: &'a mut bool,
+    pictures: &'a mut pictures::Pictures,
+}
+
+/// Bracketed paste, and distinct Shift+Enter where the terminal supports
+/// it. Returns whether the latter is on.
+fn enter_interface_mode() -> bool {
     let _ = execute!(stdout(), EnableBracketedPaste);
-    // Lets terminals that support it report Shift+Enter distinctly.
     let enhanced = supports_keyboard_enhancement().unwrap_or(false);
     if enhanced {
         let _ = execute!(
@@ -97,29 +126,31 @@ async fn run_app(
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
         );
     }
+    enhanced
+}
 
-    let result = event_loop(&mut terminal, app, &mut events, &execute).await;
-
+fn leave_interface_mode(enhanced: bool) {
     if enhanced {
         let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
     }
     let _ = execute!(stdout(), DisableBracketedPaste);
-    ratatui::restore();
-    result
 }
 
 async fn event_loop(
-    terminal: &mut DefaultTerminal,
+    screen: &mut Screen<'_>,
     app: &mut App,
     events: &mut UnboundedReceiver<Event>,
     execute: &impl Fn(Command),
 ) -> Result<()> {
-    let mut terminal_events = EventStream::new();
+    // `None` while another program (mpv) has the keyboard.
+    let mut terminal_events = Some(EventStream::new());
     loop {
-        terminal.draw(|frame| ui::draw(frame, app))?;
+        screen
+            .terminal
+            .draw(|frame| ui::draw(frame, app, screen.pictures))?;
 
         let event = tokio::select! {
-            Some(event) = terminal_events.next() => match event? {
+            Some(event) = next_terminal_event(&mut terminal_events) => match event? {
                 TermEvent::Key(key) if key.kind != KeyEventKind::Release => Event::Key(key),
                 TermEvent::Paste(text) => Event::Paste(text),
                 _ => continue,
@@ -129,10 +160,69 @@ async fn event_loop(
         };
 
         for command in update(app, event) {
-            execute(command);
+            match command {
+                Command::Play(target) => {
+                    if let Err(notice) = play(&target, screen, &mut terminal_events).await {
+                        app.notice = Some(notice);
+                    }
+                }
+                command => execute(command),
+            }
         }
         if app.should_quit {
             return Ok(());
         }
+    }
+}
+
+async fn next_terminal_event(
+    stream: &mut Option<EventStream>,
+) -> Option<std::io::Result<TermEvent>> {
+    match stream {
+        Some(stream) => stream.next().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// Hands the terminal to mpv to play `target` (a downloaded file or a web
+/// link), then takes it back.
+async fn play(
+    target: &str,
+    screen: &mut Screen<'_>,
+    terminal_events: &mut Option<EventStream>,
+) -> Result<(), String> {
+    let mpv = executor::in_path("mpv")
+        .ok_or("pour lire dans le terminal, installe mpv : brew install mpv yt-dlp")?;
+    if player::is_link(target) && executor::in_path("yt-dlp").is_none() {
+        return Err("pour lire les liens vidéo, installe yt-dlp : brew install yt-dlp".into());
+    }
+    let term = std::env::var("TERM").unwrap_or_default();
+    let output = player::video_output(std::env::var_os("TMUX").is_some(), &term);
+
+    // Stop reading the keyboard: the keys are mpv's until it quits.
+    terminal_events.take();
+    leave_interface_mode(*screen.enhanced);
+    ratatui::restore();
+
+    let status = tokio::process::Command::new(&mpv)
+        .args(player::mpv_args(target, output))
+        .status()
+        .await;
+
+    let resumed = crossterm::terminal::enable_raw_mode()
+        .and_then(|()| execute!(stdout(), crossterm::terminal::EnterAlternateScreen))
+        .and_then(|()| {
+            *screen.enhanced = enter_interface_mode();
+            screen.terminal.clear()
+        });
+    *terminal_events = Some(EventStream::new());
+    // Pictures sent to the terminal may be gone after the screen switch.
+    screen.pictures.forget();
+    resumed.map_err(|e| format!("terminal non restauré : {e}"))?;
+
+    match status {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("mpv s'est arrêté ({status})")),
+        Err(e) => Err(format!("impossible de lancer mpv : {e}")),
     }
 }

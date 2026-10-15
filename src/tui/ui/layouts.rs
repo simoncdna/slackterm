@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use crate::tui::pictures::Pictures;
 use crate::tui::state::{App, Focus};
 use crate::tui::theme::Theme;
 
@@ -36,7 +37,14 @@ fn thread_target(app: &App) -> bool {
 
 /// The current channel's messages, styled for `style`, topped by the state
 /// of older history.
-fn channel_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, style: MessageStyle) {
+fn channel_messages(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    theme: &Theme,
+    style: MessageStyle,
+    pictures: &mut Pictures,
+) {
     let selected = if app.focus == Focus::Messages {
         app.selected
     } else {
@@ -60,17 +68,25 @@ fn channel_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, sty
         _ => None,
     };
     if let Some(label) = top {
-        rendered.lines.insert(
-            0,
-            separator(label, area.width as usize, theme.muted, theme.border),
-        );
-        rendered.selected = rendered.selected.map(|(start, end)| (start + 1, end + 1));
+        rendered.push_front(separator(
+            label,
+            area.width as usize,
+            theme.muted,
+            theme.border,
+        ));
     }
     let loading = history.is_none_or(|h| !h.loaded);
-    render_messages(frame, area, rendered, theme, loading);
+    render_messages(frame, area, rendered, theme, loading, app, pictures);
 }
 
-fn thread_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, style: MessageStyle) {
+fn thread_messages(
+    frame: &mut Frame,
+    area: Rect,
+    app: &App,
+    theme: &Theme,
+    style: MessageStyle,
+    pictures: &mut Pictures,
+) {
     let Some(thread) = &app.thread else { return };
     let selected = if app.focus == Focus::Thread {
         thread.selected
@@ -86,7 +102,7 @@ fn thread_messages(frame: &mut Frame, area: Rect, app: &App, theme: &Theme, styl
         style,
         true,
     );
-    render_messages(frame, area, rendered, theme, !thread.loaded);
+    render_messages(frame, area, rendered, theme, !thread.loaded, app, pictures);
 }
 
 fn thread_title(app: &App) -> String {
@@ -106,7 +122,7 @@ fn thread_title(app: &App) -> String {
 
 // ---------------------------------------------------- A · trois panneaux
 
-pub fn panels(frame: &mut Frame, app: &App, theme: &Theme) {
+pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let [main, status] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
     let sidebar_width = (main.width / 4).clamp(20, 32);
@@ -166,7 +182,14 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme) {
         )),
         topic_area,
     );
-    channel_messages(frame, messages_area, app, theme, MessageStyle::Panels);
+    channel_messages(
+        frame,
+        messages_area,
+        app,
+        theme,
+        MessageStyle::Panels,
+        pictures,
+    );
     let channel_placeholder = format!("Écrire dans {}… (i)", channel_title(app));
     input_box(
         frame,
@@ -193,7 +216,14 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme) {
             Constraint::Length(input_height(app, inner.width, &composer)),
         ])
         .areas(inner);
-        thread_messages(frame, messages_area, app, theme, MessageStyle::Panels);
+        thread_messages(
+            frame,
+            messages_area,
+            app,
+            theme,
+            MessageStyle::Panels,
+            pictures,
+        );
         input_box(
             frame,
             input_area,
@@ -210,7 +240,7 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme) {
 
 // ------------------------------------------------- B · flux dense (IRC)
 
-pub fn stream(frame: &mut Frame, app: &App, theme: &Theme) {
+pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let target = if thread_target(app) { "fil" } else { "" };
     let prompt = if target.is_empty() {
         format!("[{}] ", app.my_name)
@@ -268,7 +298,7 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme) {
         SidebarStyle::Numbered,
     );
     let messages = messages.inner(ratatui::layout::Margin::new(1, 0));
-    channel_messages(frame, messages, app, theme, MessageStyle::Stream);
+    channel_messages(frame, messages, app, theme, MessageStyle::Stream, pictures);
 
     if app.thread.is_some() {
         let [rule, body] =
@@ -293,6 +323,7 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme) {
             app,
             theme,
             MessageStyle::Stream,
+            pictures,
         );
     }
 
@@ -303,7 +334,7 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme) {
 
 // ---------------------------------------------- C · focus + sélecteur
 
-pub fn focus(frame: &mut Frame, app: &App, theme: &Theme) {
+pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let composer = InputStyle::Prompt {
         prompt: "› ".into(),
     };
@@ -349,7 +380,7 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme) {
     );
 
     let messages = messages.inner(ratatui::layout::Margin::new(2, 1));
-    channel_messages(frame, messages, app, theme, MessageStyle::Focus);
+    channel_messages(frame, messages, app, theme, MessageStyle::Focus, pictures);
 
     if app.thread.is_some() {
         let block = Block::new()
@@ -367,7 +398,7 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme) {
             .inner(thread)
             .inner(ratatui::layout::Margin::new(2, 0));
         frame.render_widget(block, thread);
-        thread_messages(frame, inner, app, theme, MessageStyle::Focus);
+        thread_messages(frame, inner, app, theme, MessageStyle::Focus, pictures);
     }
 
     let block = Block::new()

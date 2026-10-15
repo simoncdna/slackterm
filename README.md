@@ -30,6 +30,7 @@ slackterm reprend ce qui compte au quotidien — lire, répondre, retrouver un m
 - 🎯 **Ctrl+K** pour sauter n'importe où en quelques lettres (recherche floue).
 - 🔔 **Non-lus et mentions** repris de ton client Slack au démarrage, puis tenus à jour.
 - 🎨 **3 dispositions, 4 thèmes** et une couleur d'accent, changés en direct.
+- 🖼️ **Avatars** : les photos de profil dans les terminaux qui affichent des images (Kitty, iTerm2, WezTerm, Sixel), des initiales colorées ailleurs.
 - 😄 **Réactions** en deux touches, et les emoji Slack (`:tada:`, tons de peau, drapeaux) convertis en vrais emoji.
 
 ## Essayer sans compte
@@ -68,7 +69,7 @@ Sélectionne un message, `r` : les réactions les plus utilisées dans tes conve
 
 ### Trois dispositions, changées en direct
 
-`,` ouvre les réglages : chaque changement s'applique immédiatement et est enregistré pour la prochaine fois.
+`,` ouvre les réglages (disposition, thème, accent, avatars) : chaque changement s'applique immédiatement et est enregistré pour la prochaine fois.
 
 <img src="docs/media/layouts.gif" alt="Passage de la disposition en trois panneaux au flux dense, puis au mode focus" width="100%">
 
@@ -133,7 +134,7 @@ La touche `,` affiche les réglages et la barre d'état rappelle toujours les ra
 |---|---|
 | `Ctrl+K` | Aller à un canal ou une personne |
 | `/` ou `Ctrl+F` | Chercher dans les messages |
-| `,` | Réglages (disposition, thème, accent) |
+| `,` | Réglages (disposition, thème, accent, avatars) |
 | `Tab` / `Shift+Tab` | Panneau suivant / précédent |
 | `1` `2` `3` | Barre latérale, messages, fil |
 | `q` ou `Ctrl+C` | Quitter |
@@ -178,6 +179,7 @@ Les réglages faits avec `,` sont enregistrés dans `config.toml` (`~/Library/Ap
 layout = "panels"   # panels | stream | focus
 theme = "nuit"      # nuit | clair | gruvbox | nord
 accent = "theme"    # theme | ambre | bleu | lilas | vert
+avatars = "images"  # images | initials | off
 ```
 
 Les sections repliées et l'onglet ouvert sont retenus à part, dans `sidebar.toml`.

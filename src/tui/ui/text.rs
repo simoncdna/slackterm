@@ -92,6 +92,48 @@ pub fn truncate(text: &str, width: usize) -> String {
     out
 }
 
+/// `0:19`, `12:05`, `1:02:03`.
+pub fn format_duration(milliseconds: u64) -> String {
+    let seconds = milliseconds / 1000;
+    let (hours, minutes, seconds) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
+
+/// `512 o`, `680 Ko`, `10,7 Mo`, `1,2 Go`.
+pub fn format_size(bytes: u64) -> String {
+    const KB: f64 = 1000.0;
+    let bytes_f = bytes as f64;
+    let (value, unit) = if bytes_f < KB {
+        return format!("{bytes} o");
+    } else if bytes_f < KB * KB {
+        return format!("{} Ko", (bytes_f / KB).round());
+    } else if bytes_f < KB * KB * KB {
+        (bytes_f / KB / KB, "Mo")
+    } else {
+        (bytes_f / KB / KB / KB, "Go")
+    };
+    format!("{value:.1} {unit}").replace('.', ",")
+}
+
+/// Left-aligns `text` in `width` columns, cutting it if needed.
+pub fn align_left(text: &str, width: usize) -> String {
+    let mut out = String::new();
+    let mut used = 0;
+    for c in text.chars() {
+        let c_width = c.width().unwrap_or(0);
+        if used + c_width > width {
+            break;
+        }
+        out.push(c);
+        used += c_width;
+    }
+    out + &" ".repeat(width - used)
+}
+
 /// Right-aligns `text` in `width` columns, truncating it if needed.
 pub fn align_right(text: &str, width: usize) -> String {
     let text = truncate(text, width);
@@ -226,6 +268,8 @@ mod tests {
         assert_eq!(truncate("deploys", 5), "depl…");
         assert_eq!(truncate("dev", 5), "dev");
         assert_eq!(align_right("ab", 4), "  ab");
+        assert_eq!(align_left("ab", 4), "ab  ");
+        assert_eq!(align_left("abcdef", 2), "ab");
     }
 
     #[test]
@@ -246,6 +290,17 @@ mod tests {
         assert_eq!(recency_label(at(2026, 10, 5), today), "lun.");
         assert_eq!(recency_label(at(2026, 9, 2), today), "2 sept.");
         assert_eq!(recency_label(at(2025, 12, 1), today), "déc. 2025");
+    }
+
+    #[test]
+    fn formats_durations_and_sizes() {
+        assert_eq!(format_duration(19_686), "0:19");
+        assert_eq!(format_duration(725_000), "12:05");
+        assert_eq!(format_duration(3_723_000), "1:02:03");
+        assert_eq!(format_size(512), "512 o");
+        assert_eq!(format_size(680_400), "680 Ko");
+        assert_eq!(format_size(10_747_897), "10,7 Mo");
+        assert_eq!(format_size(1_234_000_000), "1,2 Go");
     }
 
     #[test]

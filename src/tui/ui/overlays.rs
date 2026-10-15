@@ -6,7 +6,7 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 
-use crate::config::{Choice, Settings};
+use crate::config::{AvatarStyle, Choice, Settings};
 use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::input::Input;
 use crate::tui::state::{App, EmojiPicker, Search, SearchStatus};
@@ -132,11 +132,12 @@ pub fn settings(
     theme: &Theme,
     settings: &Settings,
     path: Option<&Path>,
+    images: &str,
     row: usize,
 ) {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(64);
-    let height = 10.min(screen.height);
+    let height = 11.min(screen.height);
     let area = Rect {
         x: screen.x + (screen.width - width) / 2,
         y: screen.y + (screen.height - height) / 3,
@@ -155,9 +156,17 @@ pub fn settings(
         ("Affichage", settings.layout.label()),
         ("Thème", settings.theme.label()),
         ("Accent", settings.accent.label()),
+        ("Avatars", settings.avatars.label()),
+    ];
+    // The picture protocol in use, to tell why only initials show.
+    let notes = [
+        None,
+        None,
+        None,
+        (settings.avatars == AvatarStyle::Images).then_some(images),
     ];
     let mut lines = vec![Line::default()];
-    for (index, (name, value)) in entries.into_iter().enumerate() {
+    for (index, ((name, value), note)) in entries.into_iter().zip(notes).enumerate() {
         let selected = index == row;
         let arrows = Style::new().fg(if selected { theme.accent } else { theme.border });
         let line = Line::from(vec![
@@ -169,6 +178,10 @@ pub fn settings(
             Span::styled("‹ ", arrows),
             Span::styled(value, Style::new().fg(theme.fg).bold()),
             Span::styled(" ›", arrows),
+            Span::styled(
+                note.map(|n| format!("  {n}")).unwrap_or_default(),
+                Style::new().fg(theme.muted),
+            ),
         ]);
         lines.push(if selected {
             line.style(Style::new().bg(theme.surface))

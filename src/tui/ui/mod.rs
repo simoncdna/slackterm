@@ -9,19 +9,20 @@ use ratatui::widgets::Block;
 
 use crate::config::Layout;
 
+use super::pictures::Pictures;
 use super::state::{App, Overlay};
 use super::theme::Theme;
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
     let theme = Theme::from_settings(&app.settings);
     frame.render_widget(
         Block::new().style(Style::new().bg(theme.bg).fg(theme.fg)),
         frame.area(),
     );
     match app.settings.layout {
-        Layout::Panels => layouts::panels(frame, app, &theme),
-        Layout::Stream => layouts::stream(frame, app, &theme),
-        Layout::Focus => layouts::focus(frame, app, &theme),
+        Layout::Panels => layouts::panels(frame, app, &theme, pictures),
+        Layout::Stream => layouts::stream(frame, app, &theme, pictures),
+        Layout::Focus => layouts::focus(frame, app, &theme, pictures),
     }
     match &app.overlay {
         Some(Overlay::Switcher { query, cursor }) => {
@@ -32,6 +33,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             &theme,
             &app.settings,
             app.settings_path.as_deref(),
+            &pictures.describe(),
             *row,
         ),
         Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
@@ -54,7 +56,9 @@ mod tests {
 
     fn screen(app: &App, width: u16, height: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-        terminal.draw(|frame| draw(frame, app)).unwrap();
+        terminal
+            .draw(|frame| draw(frame, app, &mut Pictures::disabled()))
+            .unwrap();
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
         for y in 0..buffer.area.height {
@@ -248,6 +252,126 @@ mod tests {
         assert!(text.contains("réagir"), "{text}");
         assert!(text.contains("message de camille"), "{text}");
         assert!(text.contains("👍 :+1:  ✓ déjà mise"), "{text}");
+    }
+
+    #[test]
+    fn headers_start_with_initials_unless_avatars_are_off() {
+        let mut app = sample_app();
+        let text = screen(&app, 120, 30);
+        assert!(text.contains(" CA  camille  23:13"), "{text}");
+
+        app.settings.avatars = crate::config::AvatarStyle::Off;
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("23:13  camille"), "{text}");
+        assert!(!text.contains(" CA "), "{text}");
+    }
+
+    #[test]
+    fn the_settings_list_avatars() {
+        let mut app = sample_app();
+        app.overlay = Some(Overlay::Settings { row: 3 });
+        let text = screen(&app, 100, 30);
+        assert!(text.contains("Avatars"), "{text}");
+        assert!(text.contains("‹ photos ›  terminal sans images"), "{text}");
+    }
+
+    fn app_with_video() -> App {
+        let mut app = sample_app();
+        let video: crate::slack::File = serde_json::from_value(serde_json::json!({
+            "id": "F1", "name": "demo.mp4", "mimetype": "video/mp4", "size": 10747897,
+            "duration_ms": 19686, "thumb_video": "https://files.slack.com/thumb.jpg"
+        }))
+        .unwrap();
+        app.histories.get_mut("C1").unwrap().messages[1]
+            .files
+            .push(video);
+        app
+    }
+
+    #[test]
+    fn files_show_their_kind_duration_and_size() {
+        let app = app_with_video();
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("▶ demo.mp4 · 0:19 · 10,7 Mo"), "{text}");
+    }
+
+    #[test]
+    fn previews_get_room_only_when_pictures_can_be_drawn() {
+        let mut app = app_with_video();
+        let theme = crate::tui::theme::Theme::from_settings(&app.settings);
+        let messages = app.current_messages().to_vec();
+        let style = widgets::MessageStyle::Panels;
+        let without = widgets::message_lines(&app, &theme, &messages, 80, None, style, false);
+        assert!(without.previews.is_empty());
+
+        app.graphics = true;
+        let with = widgets::message_lines(&app, &theme, &messages, 80, None, style, false);
+        let [preview] = &with.previews[..] else {
+            panic!("one preview expected");
+        };
+        assert_eq!(preview.key, "file:F1");
+        assert_eq!((preview.size.width, preview.size.height), (36, 10));
+        assert_eq!(with.lines.len(), without.lines.len() + 10);
+    }
+
+    #[test]
+    fn youtube_links_show_a_card_with_room_for_the_thumbnail() {
+        let mut app = sample_app();
+        let msg = &mut app.histories.get_mut("C1").unwrap().messages[1];
+        msg.text = "<https://youtu.be/dQw4w9WgXcQ>".into();
+        msg.attachments.push(crate::slack::Attachment {
+            service_name: Some("YouTube".into()),
+            title: Some("Never Gonna Give You Up".into()),
+            author_name: Some("Rick Astley".into()),
+            original_url: Some("https://youtu.be/dQw4w9WgXcQ".into()),
+            video_html: Some("<iframe>".into()),
+            ..Default::default()
+        });
+        let text = screen(&app, 120, 40);
+        assert!(
+            text.contains("▶ YouTube · Never Gonna Give You Up — Rick Astley"),
+            "{text}"
+        );
+
+        app.graphics = true;
+        let theme = crate::tui::theme::Theme::from_settings(&app.settings);
+        let messages = app.current_messages().to_vec();
+        let rendered = widgets::message_lines(
+            &app,
+            &theme,
+            &messages,
+            100,
+            None,
+            widgets::MessageStyle::Panels,
+            false,
+        );
+        assert_eq!(rendered.previews[0].key, "link:youtube:dQw4w9WgXcQ");
+    }
+
+    #[test]
+    fn a_row_added_on_top_moves_the_pictures_down() {
+        let mut app = app_with_video();
+        app.graphics = true;
+        let theme = crate::tui::theme::Theme::from_settings(&app.settings);
+        let messages = app.current_messages().to_vec();
+        let mut rendered = widgets::message_lines(
+            &app,
+            &theme,
+            &messages,
+            80,
+            Some(1),
+            widgets::MessageStyle::Panels,
+            false,
+        );
+        let avatar = rendered.avatars[0].0;
+        let preview = rendered.previews[0].line;
+        let selected = rendered.selected.unwrap();
+
+        rendered.push_front(ratatui::text::Line::raw("début de la conversation"));
+
+        assert_eq!(rendered.avatars[0].0, avatar + 1);
+        assert_eq!(rendered.previews[0].line, preview + 1);
+        assert_eq!(rendered.selected, Some((selected.0 + 1, selected.1 + 1)));
     }
 
     /// `cargo test preview -- --ignored --nocapture` prints every layout.

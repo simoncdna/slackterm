@@ -40,6 +40,19 @@ pub struct AuthTest {
     pub user_id: String,
 }
 
+/// Whether `url` is one of Slack's, which may receive the session.
+pub fn is_slack_file_url(url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str().is_some_and(|host| {
+            ["slack.com", "slack-edge.com"]
+                .iter()
+                .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+        })
+}
+
 pub struct HistoryPage {
     pub messages: Vec<Message>,
     pub has_more: bool,
@@ -223,6 +236,23 @@ impl SlackClient {
         Ok(serde_json::from_value(body["emoji"].clone())?)
     }
 
+    /// Starts downloading a private file (`url_private…`, thumbnails), which
+    /// needs the session. Refuses hosts other than Slack's, so the session
+    /// never leaves for another site.
+    pub async fn download(&self, url: &str) -> Result<reqwest::Response, SlackError> {
+        if !is_slack_file_url(url) {
+            return Err(SlackError::Api(format!("adresse hors de Slack : {url}")));
+        }
+        Ok(self
+            .http
+            .get(url)
+            .bearer_auth(&self.token)
+            .header(COOKIE, format!("d={}", self.cookie_d))
+            .send()
+            .await?
+            .error_for_status()?)
+    }
+
     pub async fn conversations_mark(&self, channel: &str, ts: &str) -> Result<(), SlackError> {
         let params = vec![("channel", channel.into()), ("ts", ts.into())];
         self.call_value("conversations.mark", &params).await?;
@@ -399,6 +429,17 @@ mod tests {
 
         assert_eq!(page.messages[0].text, "first");
         assert!(!page.has_more);
+    }
+
+    #[test]
+    fn only_slack_hosts_get_the_session() {
+        assert!(is_slack_file_url(
+            "https://files.slack.com/files-pri/T1-F1/demo.mp4"
+        ));
+        assert!(is_slack_file_url("https://acme.slack.com/files/x"));
+        assert!(!is_slack_file_url("https://evilslack.com/x"));
+        assert!(!is_slack_file_url("https://files.slack.com.evil.dev/x"));
+        assert!(!is_slack_file_url("http://files.slack.com/x"));
     }
 
     #[tokio::test]
