@@ -2,6 +2,13 @@
 name = "slackterm"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.88"
+description = "Slack in your terminal: real time, threads, search and sections, all from the keyboard"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/simoncdna/slackterm"
+readme = "README.md"
+keywords = ["slack", "tui", "terminal", "chat", "cli"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0.104"
