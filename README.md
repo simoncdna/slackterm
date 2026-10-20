@@ -316,10 +316,13 @@ docs/record.sh search   # only docs/tapes/search.tape
 A version tag builds and publishes everything with [cargo-dist](https://github.com/axodotdev/cargo-dist): binaries for macOS, Linux and Windows on GitHub Releases, the install scripts and the Homebrew formula.
 
 ```sh
+# in CHANGELOG.md, turn "Unreleased" into the version and its date;
 # bump `version` in Cargo.toml and commit, then:
 git tag v0.2.0 && git push origin v0.2.0
 cargo publish
 ```
+
+The release notes on GitHub come from that version's part of [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
