@@ -2,7 +2,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::Shell;
 
 use slackterm::commands::{self, ConfigOptions, LoginOptions};
 use slackterm::config::config_path;
@@ -48,6 +49,11 @@ enum Command {
     Demo,
     /// Check what slackterm needs, and where its log is
     Doctor,
+    /// Print the shell completion script: bash, zsh, fish, elvish or powershell
+    Completions {
+        #[arg(value_name = "SHELL")]
+        shell: Shell,
+    },
     /// Open the config file in your editor ($VISUAL or $EDITOR)
     Config {
         /// Only print where the config file is
@@ -104,11 +110,39 @@ async fn run() -> Result<()> {
         Command::Logout => commands::logout(&store),
         Command::Status => commands::status(&store, DEFAULT_API_BASE).await,
         Command::Demo => slackterm::tui::run_demo().await,
+        Command::Completions { shell } => {
+            clap_complete::generate(
+                shell,
+                &mut Cli::command(),
+                "slackterm",
+                &mut std::io::stdout(),
+            );
+            Ok(())
+        }
         Command::Doctor => {
             commands::doctor(&store, DEFAULT_API_BASE, &config_path(cli.config)?).await
         }
         Command::Config { path, default } => {
             commands::config(&config_path(cli.config)?, ConfigOptions { path, default })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_command_line_is_consistent() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn writes_completions_for_every_shell() {
+        for shell in [Shell::Bash, Shell::Zsh, Shell::Fish] {
+            let mut script = Vec::new();
+            clap_complete::generate(shell, &mut Cli::command(), "slackterm", &mut script);
+            assert!(String::from_utf8(script).unwrap().contains("doctor"));
         }
     }
 }

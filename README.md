@@ -123,6 +123,14 @@ cargo install slackterm
 
 Prebuilt binaries for every platform are also on the [releases page](https://github.com/simoncdna/slackterm/releases/latest).
 
+For completion of commands and options in your shell:
+
+```sh
+slackterm completions zsh > ~/.zfunc/_slackterm      # zsh, with ~/.zfunc in $fpath
+slackterm completions bash > ~/.local/share/bash-completion/completions/slackterm
+slackterm completions fish > ~/.config/fish/completions/slackterm.fish
+```
+
 ## Sign in
 
 ```sh
