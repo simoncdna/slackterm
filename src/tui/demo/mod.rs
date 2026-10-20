@@ -193,6 +193,7 @@ impl Demo {
             // Run by the event loop, which never hands it to the demo.
             Command::Play(_) => {}
             Command::MarkRead { .. } | Command::SaveSettings { .. } | Command::SaveSidebar(_) => {}
+            Command::LoadMuted => send(ApiEvent::Muted(content::muted())),
             Command::LoadPublicChannels => send(ApiEvent::PublicChannels(
                 self.state().content.public_channels.clone(),
             )),

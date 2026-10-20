@@ -1,7 +1,7 @@
 //! All state changes go through [`update`], which returns the side effects to
 //! run instead of performing them, so it can be tested without Slack.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crossterm::event::KeyEvent;
@@ -80,6 +80,8 @@ pub enum ApiEvent {
     CountsUnavailable,
     /// Every public channel of the workspace, for the switcher.
     PublicChannels(Vec<Conversation>),
+    /// The conversations the user muted.
+    Muted(HashSet<String>),
     /// One of the user's messages, rewritten.
     Edited {
         channel: String,
@@ -156,6 +158,7 @@ pub enum Command {
         add: bool,
     },
     LoadPublicChannels,
+    LoadMuted,
     /// Open the direct conversation with this user, starting it if needed.
     OpenDirect(String),
     /// Join this public channel.
@@ -182,6 +185,7 @@ pub fn initial_commands() -> Vec<Command> {
         Command::LoadCounts,
         Command::LoadSections,
         Command::LoadEmoji,
+        Command::LoadMuted,
     ]
 }
 
@@ -302,6 +306,7 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
                 .collect();
             app.channels_loaded = true;
             app.sort_channels();
+            app.apply_muted();
             app.apply_counts();
             match &app.current {
                 Some(_) => Vec::new(),
@@ -397,6 +402,11 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
         }
         ApiEvent::PublicChannels(channels) => {
             app.public_channels = channels;
+            Vec::new()
+        }
+        ApiEvent::Muted(muted) => {
+            app.muted = muted;
+            app.apply_muted();
             Vec::new()
         }
         ApiEvent::Edited { channel, ts, text } => {
@@ -571,10 +581,11 @@ fn on_message(app: &mut App, channel: String, message: Message) -> Vec<Command> 
     }
     match app.channel_mut(&channel) {
         Some(known) => {
-            known.unread = true;
-            if mentions_me || known.is_direct() {
+            let notifies = mentions_me || known.is_direct();
+            if notifies {
                 known.mentions += 1;
             }
+            known.unread |= notifies || !known.muted;
             Vec::new()
         }
         None => {

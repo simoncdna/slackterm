@@ -200,6 +200,12 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .await
             .map(ApiEvent::PublicChannels)
             .map_err(failed("channels"))?,
+        // Without them, muted conversations only show their unread.
+        Command::LoadMuted => match client.muted_channels().await {
+            Ok(muted) => ApiEvent::Muted(muted),
+            Err(e) if e.is_session_expired() => return Err(Failure::SessionExpired),
+            Err(_) => return Ok(None),
+        },
         Command::OpenDirect(user) => client
             .conversations_open(&user)
             .await

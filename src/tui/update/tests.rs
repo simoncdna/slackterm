@@ -1309,3 +1309,35 @@ fn deletes_after_asking() {
     );
     assert!(app.find_message("C1", "3.0").is_none());
 }
+
+#[test]
+fn muted_conversations_only_count_mentions() {
+    let mut app = loaded_app();
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Muted(["C2".to_string()].into())),
+    );
+    let random = |app: &App| {
+        let c = app.channel("C2").unwrap();
+        (c.muted, c.unread, c.mentions)
+    };
+    assert_eq!(random(&app), (true, false, 0));
+
+    update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C2".into(),
+            message: message("5.0", "U2", "lunch?"),
+        }),
+    );
+    assert_eq!(random(&app), (true, false, 0));
+
+    update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C2".into(),
+            message: message("6.0", "U2", "<@UME> you coming?"),
+        }),
+    );
+    assert_eq!(random(&app), (true, true, 1));
+}

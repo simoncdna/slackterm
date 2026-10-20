@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use reqwest::StatusCode;
@@ -54,6 +54,33 @@ pub struct AuthTest {
     pub user: String,
     pub team_id: String,
     pub user_id: String,
+}
+
+/// Muted conversations, from the user's preferences: the current
+/// notification settings, a JSON document in a string, and the older
+/// `muted_channels` list.
+fn muted_in(prefs: &Value) -> HashSet<String> {
+    let mut muted: HashSet<String> = prefs["muted_channels"]
+        .as_str()
+        .unwrap_or_default()
+        .split(',')
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .collect();
+    let notifications = prefs["all_notifications_prefs"]
+        .as_str()
+        .and_then(|json| serde_json::from_str::<Value>(json).ok());
+    if let Some(channels) = notifications
+        .as_ref()
+        .and_then(|n| n["channels"].as_object())
+    {
+        for (id, settings) in channels {
+            if settings["muted"] == true {
+                muted.insert(id.clone());
+            }
+        }
+    }
+    muted
 }
 
 /// Whether `url` is one of Slack's, which may receive the session.
@@ -290,6 +317,12 @@ impl SlackClient {
         Ok(())
     }
 
+    /// The conversations the user muted.
+    pub async fn muted_channels(&self) -> Result<HashSet<String>, SlackError> {
+        let body = self.call_value("users.prefs.get", &Vec::new()).await?;
+        Ok(muted_in(&body["prefs"]))
+    }
+
     /// The workspace's custom emoji: name → image URL, or `alias:<name>`.
     pub async fn emoji_list(&self) -> Result<HashMap<String, String>, SlackError> {
         let body = self.call_value("emoji.list", &Vec::new()).await?;
@@ -455,6 +488,19 @@ mod tests {
         assert_eq!(conversation.id, "D9");
         assert!(conversation.is_im);
         assert_eq!(conversation.user.as_deref(), Some("U2"));
+    }
+
+    #[test]
+    fn reads_muted_conversations_from_both_preferences() {
+        let prefs = serde_json::json!({
+            "muted_channels": "C1,C2",
+            "all_notifications_prefs":
+                "{\"channels\":{\"C3\":{\"muted\":true},\"C4\":{\"muted\":false}}}"
+        });
+        let mut muted: Vec<String> = muted_in(&prefs).into_iter().collect();
+        muted.sort();
+        assert_eq!(muted, ["C1", "C2", "C3"]);
+        assert!(muted_in(&serde_json::json!({})).is_empty());
     }
 
     #[test]

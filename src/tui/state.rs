@@ -40,6 +40,8 @@ pub struct Channel {
     pub listed: bool,
     /// Timestamp of the latest message, to order direct messages by recency.
     pub latest: String,
+    /// Muted by the user: only mentions count as unread.
+    pub muted: bool,
 }
 
 impl Channel {
@@ -63,6 +65,7 @@ impl Channel {
             mentions: 0,
             listed: !matches!(kind, ChannelKind::Direct | ChannelKind::Group),
             latest: String::new(),
+            muted: false,
         }
     }
 
@@ -89,6 +92,7 @@ impl Channel {
             mentions: 0,
             listed: false,
             latest: String::new(),
+            muted: false,
         }
     }
 
@@ -360,6 +364,8 @@ pub struct App {
     pub counts_unavailable: bool,
     /// Channels that received messages before they were known.
     pub pending_unread: HashSet<String>,
+    /// Conversations the user muted in Slack.
+    pub muted: HashSet<String>,
     pub current: Option<String>,
     pub sections: Vec<Section>,
     /// Every public channel of the workspace, once the switcher asked.
@@ -423,6 +429,7 @@ impl App {
             counts: None,
             counts_unavailable: false,
             pending_unread: HashSet::new(),
+            muted: HashSet::new(),
             current: None,
             sections: Section::defaults(),
             public_channels: Vec::new(),
@@ -702,6 +709,16 @@ impl App {
 
     /// Applies the read state from `client.counts` once both it and the
     /// channel list are known. It is only valid at startup, so it is used once.
+    /// Marks the muted conversations, which keep only their mentions.
+    pub fn apply_muted(&mut self) {
+        for channel in &mut self.channels {
+            channel.muted = self.muted.contains(&channel.id);
+            if channel.muted && channel.mentions == 0 {
+                channel.unread = false;
+            }
+        }
+    }
+
     pub fn apply_counts(&mut self) {
         if !self.channels_loaded {
             return;
@@ -719,8 +736,8 @@ impl App {
                 continue;
             };
             channel.listed = true;
-            channel.unread |= count.has_unreads;
             channel.mentions = channel.mentions.max(count.mention_count);
+            channel.unread |= count.has_unreads && (!channel.muted || channel.mentions > 0);
             if let Some(latest) = &count.latest
                 && *latest > channel.latest
             {

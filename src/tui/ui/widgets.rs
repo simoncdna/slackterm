@@ -823,6 +823,8 @@ fn channel_row(
         Style::new().fg(theme.accent).bold()
     } else if channel.unread {
         Style::new().fg(theme.fg).bold()
+    } else if channel.muted {
+        Style::new().fg(theme.border)
     } else {
         Style::new().fg(theme.muted)
     };

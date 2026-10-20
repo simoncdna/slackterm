@@ -187,6 +187,11 @@ fn public_channels(joined: &[Conversation]) -> Vec<Conversation> {
         .collect()
 }
 
+/// Muted, to show how muted conversations look.
+pub fn muted() -> std::collections::HashSet<String> {
+    [RANDOM.to_string()].into()
+}
+
 /// A direct conversation with `user`, as `conversations.open` starts one.
 pub fn direct_conversation(user: &str) -> Conversation {
     from_json(json!({"id": format!("D{user}"), "is_im": true, "user": user}))
