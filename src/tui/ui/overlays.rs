@@ -12,7 +12,9 @@ use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::compose::{self, Completion};
 use crate::tui::input::Input;
 use crate::tui::keymap::{ACTIONS, Scope};
-use crate::tui::state::{App, EmojiPicker, ReactionTarget, Search, SearchStatus, SwitcherTarget};
+use crate::tui::state::{
+    App, EmojiPicker, ReactionTarget, Search, SearchStatus, SwitcherTarget, WorkspaceTab,
+};
 use crate::tui::theme::Theme;
 
 use super::text::{Styled, align_left, local_time, short_datetime, truncate, truncate_styled};
@@ -121,6 +123,10 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
                 SwitcherTarget::Join(_) => {
                     spans.push(Span::styled("  join", Style::new().fg(theme.muted)))
                 }
+                SwitcherTarget::Workspace(index) => {
+                    spans.push(Span::styled("  workspace", Style::new().fg(theme.muted)));
+                    spans.extend(workspace_badge(&app.workspaces[*index], theme));
+                }
             }
             let line = Line::from(spans);
             if selected {
@@ -140,6 +146,20 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
         hint_area,
     );
     area
+}
+
+/// ` @2` when people wait for the user there, ` •` when there is news.
+pub fn workspace_badge(tab: &WorkspaceTab, theme: &Theme) -> Option<Span<'static>> {
+    if tab.mentions > 0 {
+        Some(Span::styled(
+            format!(" @{}", tab.mentions),
+            Style::new().fg(theme.accent).bold(),
+        ))
+    } else if tab.unread {
+        Some(Span::styled(" •", Style::new().fg(theme.unread)))
+    } else {
+        None
+    }
 }
 
 pub fn settings(

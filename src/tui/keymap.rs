@@ -22,6 +22,7 @@ pub enum Action {
     FocusSidebar,
     FocusMessages,
     FocusThread,
+    NextWorkspace,
     Write,
     Down,
     Up,
@@ -115,6 +116,13 @@ pub const ACTIONS: &[Definition] = &[
         "Messages",
     ),
     define(FocusThread, "focus_thread", Anywhere, &["3"], "Thread"),
+    define(
+        NextWorkspace,
+        "next_workspace",
+        Anywhere,
+        &["w"],
+        "Next workspace, when signed in to several",
+    ),
     define(
         Write,
         "write",
@@ -573,13 +581,13 @@ mod tests {
     #[test]
     fn the_table_replaces_keys_and_reports_problems() {
         let (keymap, problems) = Keymap::new(&table(&[
-            ("react", &["w"]),
+            ("react", &["z"]),
             ("play", &[]),
             ("quit", &["x", "hyper+q"]),
             ("fly", &["f"]),
         ]));
-        let w = press(KeyCode::Char('w'), KeyModifiers::NONE);
-        assert_eq!(keymap.action(Focus::Messages, w), Some(React));
+        let z = press(KeyCode::Char('z'), KeyModifiers::NONE);
+        assert_eq!(keymap.action(Focus::Messages, z), Some(React));
         let p = press(KeyCode::Char('p'), KeyModifiers::NONE);
         assert_eq!(keymap.action(Focus::Messages, p), None);
         assert_eq!(keymap.hint(Quit).as_deref(), Some("x"));

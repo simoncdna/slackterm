@@ -24,6 +24,17 @@ const REACTION_DELAY: Duration = Duration::from_millis(1500);
 const REPLY_DELAY: Duration = Duration::from_millis(2500);
 const REACTIONS: [&str; 4] = ["raised_hands", "+1", "heart", "rocket"];
 
+pub fn side_workspace() -> Workspace {
+    Workspace {
+        team_id: "T0SIDE".into(),
+        team_name: "Weekend Builders".into(),
+        url: "https://weekend-builders.slack.com/".into(),
+        user_id: ME.into(),
+        user_name: "alex".into(),
+        token: String::new(),
+    }
+}
+
 pub fn workspace() -> Workspace {
     Workspace {
         team_id: "T0DEMO".into(),
@@ -48,11 +59,17 @@ struct State {
 
 impl Demo {
     pub fn new() -> Self {
+        Self::with(content::build())
+    }
+
+    /// The second workspace, to switch to.
+    pub fn side() -> Self {
+        Self::with(content::build_side())
+    }
+
+    fn with(content: Content) -> Self {
         Self {
-            state: Arc::new(Mutex::new(State {
-                content: content::build(),
-                sent: 0,
-            })),
+            state: Arc::new(Mutex::new(State { content, sent: 0 })),
         }
     }
 
@@ -192,7 +209,12 @@ impl Demo {
             }
             // Run by the event loop, which never hands it to the demo.
             Command::Play(_) => {}
-            Command::MarkRead { .. } | Command::SaveSettings { .. } | Command::SaveSidebar(_) => {}
+            Command::MarkRead { .. }
+            | Command::SaveSettings { .. }
+            | Command::SaveSidebar { .. }
+            | Command::NextWorkspace
+            | Command::SwitchWorkspace(_)
+            | Command::RememberWorkspace(_) => {}
             Command::LoadMuted => send(ApiEvent::Muted(content::muted())),
             Command::LoadPublicChannels => send(ApiEvent::PublicChannels(
                 self.state().content.public_channels.clone(),
@@ -550,6 +572,19 @@ mod tests {
             let bytes = content::avatar(&user.id).unwrap();
             assert!(image::load_from_memory(bytes).is_ok(), "{}", user.id);
         }
+    }
+
+    #[test]
+    fn the_second_workspace_waits_for_the_user() {
+        let side = content::build_side();
+        let ideas = side.counts.iter().find(|c| c.id == "C12IDE").unwrap();
+        assert_eq!(ideas.mention_count, 1);
+        assert!(
+            side.messages["C12IDE"]
+                .iter()
+                .any(|m| m.text.contains("<@U0ME>"))
+        );
+        assert!(side.users.iter().any(|u| u.name == "maya"));
     }
 
     #[test]

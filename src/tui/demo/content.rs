@@ -82,8 +82,9 @@ pub fn build() -> Content {
     for list in messages.values_mut() {
         list.sort_by(|a, b| a.ts.cmp(&b.ts));
     }
-    let counts = counts(&messages);
     let conversations = conversations();
+    let unread = [(RELEASE, 1), (DESIGN, 0), (DM_CAMILLE, 2)];
+    let counts = counts(&conversations, &messages, &unread);
     let public_channels = public_channels(&conversations);
     Content {
         users: users(),
@@ -224,10 +225,14 @@ fn sections() -> Vec<ChannelSection> {
 
 /// The read state at launch. Every conversation is listed, as the web
 /// client would, so direct messages show in the sidebar.
-fn counts(messages: &HashMap<String, Vec<Message>>) -> Vec<ConversationCount> {
-    let unread: HashMap<&str, u32> = [(RELEASE, 1), (DESIGN, 0), (DM_CAMILLE, 2)].into();
-    conversations()
-        .into_iter()
+fn counts(
+    conversations: &[Conversation],
+    messages: &HashMap<String, Vec<Message>>,
+    unread: &[(&str, u32)],
+) -> Vec<ConversationCount> {
+    let unread: HashMap<&str, u32> = unread.iter().copied().collect();
+    conversations
+        .iter()
         .map(|conversation| {
             let latest = messages
                 .get(&conversation.id)
@@ -714,6 +719,89 @@ impl Builder {
             .get_mut(target.channel)
             .and_then(|list| list.iter_mut().find(|m| m.ts == target.ts))
             .expect("a message posted by the builder")
+    }
+}
+
+const MAYA: &str = "U11MAY";
+const TOM: &str = "U12TOM";
+const SIDE_GENERAL: &str = "C11GEN";
+const IDEAS: &str = "C12IDE";
+const DM_MAYA: &str = "D11MAY";
+
+/// A second, smaller workspace: a weekend project with two friends, to
+/// show switching between workspaces. Maya waits for the user in #ideas.
+pub fn build_side() -> Content {
+    let mut b = Builder::new();
+    let kickoff = b.post(
+        SIDE_GENERAL,
+        b.day(3, 20, 10),
+        MAYA,
+        "Weekend plan: a tracker for our board game nights :game_die:",
+    );
+    b.react(&kickoff, "fire", &[TOM, ME]);
+    b.post(
+        SIDE_GENERAL,
+        b.day(3, 20, 25),
+        TOM,
+        "I'll set up the repo and the CI tonight",
+    );
+    b.post(
+        SIDE_GENERAL,
+        b.ago(95),
+        TOM,
+        "Repo is up, PRs welcome :rocket:",
+    );
+    b.post(
+        IDEAS,
+        b.ago(180),
+        TOM,
+        "What if the app suggested a game from who is coming?",
+    );
+    b.post(
+        IDEAS,
+        b.ago(40),
+        MAYA,
+        "<@U0ME> could you take the scoring screen? You know the rules best :trophy:",
+    );
+    b.post(DM_MAYA, b.day(1, 18, 2), MAYA, "Saturday at mine, 7pm?");
+    b.post(DM_MAYA, b.day(1, 18, 9), ME, "Perfect, I'll bring snacks");
+
+    let mut messages = b.messages;
+    for list in messages.values_mut() {
+        list.sort_by(|a, b| a.ts.cmp(&b.ts));
+    }
+    let conversations: Vec<Conversation> = [
+        json!({"id": SIDE_GENERAL, "name": "general", "topic": {"value": "Board game tracker"}}),
+        json!({"id": IDEAS, "name": "ideas", "topic": {"value": "Anything goes"}}),
+        json!({"id": DM_MAYA, "is_im": true, "user": MAYA}),
+    ]
+    .into_iter()
+    .map(from_json)
+    .collect();
+    let counts = counts(&conversations, &messages, &[(IDEAS, 1)]);
+    let users = [
+        (ME, "alex", "Alex Morel"),
+        (MAYA, "maya", "Maya Chen"),
+        (TOM, "tom", "Tom Becker"),
+    ]
+    .into_iter()
+    .map(|(id, name, real_name)| {
+        from_json(json!({
+            "id": id,
+            "name": name,
+            "real_name": real_name,
+            "profile": {"display_name": real_name.split(' ').next(), "real_name": real_name},
+        }))
+    })
+    .collect();
+    Content {
+        users,
+        public_channels: conversations[..2].to_vec(),
+        conversations,
+        sections: Vec::new(),
+        counts,
+        messages,
+        live: Vec::new(),
     }
 }
 

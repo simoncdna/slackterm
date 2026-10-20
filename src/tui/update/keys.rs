@@ -53,6 +53,9 @@ fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Action::FocusSidebar => focus_sidebar(app),
         Action::FocusMessages => app.focus = Focus::Messages,
         Action::FocusThread if app.thread.is_some() => app.focus = Focus::Thread,
+        Action::NextWorkspace if app.workspaces.len() > 1 => {
+            return vec![Command::NextWorkspace];
+        }
         Action::Write if app.current.is_some() => {
             if app.focus == Focus::Sidebar {
                 app.focus = Focus::Messages;
@@ -104,7 +107,14 @@ fn toggle_section(app: &mut App, id: &str) -> Vec<Command> {
         app.collapsed.insert(id.to_string());
     }
     app.sidebar_cursor = Some(SidebarItem::Section(id.to_string()));
-    vec![Command::SaveSidebar(app.sidebar_state())]
+    vec![save_sidebar(app)]
+}
+
+fn save_sidebar(app: &App) -> Command {
+    Command::SaveSidebar {
+        team: app.team_id.clone(),
+        state: app.sidebar_state(),
+    }
 }
 
 fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
@@ -114,7 +124,7 @@ fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
     app.sidebar_tab = tab;
     // Land on the open conversation if the tab lists it, else at the top.
     app.sidebar_cursor = None;
-    vec![Command::SaveSidebar(app.sidebar_state())]
+    vec![save_sidebar(app)]
 }
 
 fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {

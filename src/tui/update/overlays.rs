@@ -92,6 +92,7 @@ fn on_switcher_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
                 // Opened once Slack has the conversation ready.
                 Some(SwitcherTarget::Person(user)) => vec![Command::OpenDirect(user)],
                 Some(SwitcherTarget::Join(channel)) => vec![Command::Join(channel)],
+                Some(SwitcherTarget::Workspace(index)) => vec![Command::SwitchWorkspace(index)],
                 None => Vec::new(),
             };
         }

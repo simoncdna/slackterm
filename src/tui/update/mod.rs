@@ -135,7 +135,16 @@ pub enum Command {
         settings: Settings,
         path: PathBuf,
     },
-    SaveSidebar(SidebarState),
+    SaveSidebar {
+        team: String,
+        state: SidebarState,
+    },
+    /// Show the next workspace. Run by the event loop, which holds them all.
+    NextWorkspace,
+    /// Show this workspace, by its place in `App::workspaces`.
+    SwitchWorkspace(usize),
+    /// Open this workspace (team id) next time.
+    RememberWorkspace(String),
     Search(String),
     LoadEmoji,
     /// Profile pictures to fetch: user id and picture URL.
@@ -332,7 +341,7 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
             history.loaded = true;
             history.has_more = has_more;
             let mut commands = try_jump(app);
-            if app.current.as_deref() == Some(&channel) {
+            if app.visible && app.current.as_deref() == Some(&channel) {
                 commands.extend(mark_read(app, &channel));
             }
             commands
@@ -574,7 +583,7 @@ fn on_message(app: &mut App, channel: String, message: Message) -> Vec<Command> 
         message,
     );
 
-    if app.current.as_deref() == Some(&channel) {
+    if app.visible && app.current.as_deref() == Some(&channel) {
         return mark_read(app, &channel).into_iter().collect();
     }
     if mine {
@@ -618,6 +627,20 @@ fn insert_message(messages: &mut Vec<Message>, message: Message) {
         Ok(index) => messages[index] = message,
         Err(index) => messages.insert(index, message),
     }
+}
+
+/// The workspace comes on screen: what arrived meanwhile in the open
+/// conversation is now read.
+pub fn on_shown(app: &mut App) -> Vec<Command> {
+    app.visible = true;
+    let Some(channel) = app.current.clone() else {
+        return Vec::new();
+    };
+    if let Some(open) = app.channel_mut(&channel) {
+        open.unread = false;
+        open.mentions = 0;
+    }
+    mark_read(app, &channel).into_iter().collect()
 }
 
 fn mark_read(app: &App, channel: &str) -> Option<Command> {

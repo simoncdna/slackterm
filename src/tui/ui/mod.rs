@@ -265,10 +265,10 @@ mod tests {
         assert!(text.contains("👍 :+1:  ✓ already added"), "{text}");
     }
 
-    fn with_react_on_w(app: &mut App) {
+    fn with_react_on_z(app: &mut App) {
         let keys = [(
             "react".to_string(),
-            crate::config::KeyList(vec!["w".into()]),
+            crate::config::KeyList(vec!["z".into()]),
         )]
         .into();
         app.keymap = crate::tui::keymap::Keymap::new(&keys).0;
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn the_help_lists_the_keys_in_use() {
         let mut app = sample_app();
-        with_react_on_w(&mut app);
+        with_react_on_z(&mut app);
         app.overlay = Some(Overlay::Help { scroll: 0 });
 
         let text = screen(&app, 100, 50);
@@ -288,7 +288,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains(&format!("{:<16}React to the message", "w")),
+            text.contains(&format!("{:<16}React to the message", "z")),
             "{text}"
         );
         assert!(text.contains(&format!("{:<16}Send", "⏎")), "{text}");
@@ -311,11 +311,24 @@ mod tests {
     #[test]
     fn the_status_bar_shows_the_keys_in_use() {
         let mut app = sample_app();
-        with_react_on_w(&mut app);
+        with_react_on_z(&mut app);
         app.focus = Focus::Messages;
         let text = screen(&app, 160, 30);
-        assert!(text.contains("w react"), "{text}");
+        assert!(text.contains("z react"), "{text}");
         assert!(!text.contains("r react"), "{text}");
+    }
+
+    #[test]
+    fn the_status_bar_shows_the_other_workspaces() {
+        let mut app = sample_app();
+        let tab = |name: &str, mentions| crate::tui::state::WorkspaceTab {
+            name: name.into(),
+            unread: mentions > 0,
+            mentions,
+        };
+        app.workspaces = vec![tab("acme", 0), tab("side", 2), tab("perso", 0)];
+        let text = screen(&app, 160, 30);
+        assert!(text.contains("⇄ side @2 perso"), "{text}");
     }
 
     #[test]

@@ -36,6 +36,7 @@ slackterm keeps what matters day to day — reading, replying, finding a message
 - ✍️ **Mentions** that notify: type `@` or `#` and slackterm suggests people, `@here` and channels.
 - 🗂️ **Your Slack sections** (with their emoji), foldable, and a **DMs** tab sorted by activity.
 - 🔎 **Search** through the whole history, with `in:#channel`, `from:@person`, `during:today`…
+- 🏢 **Several workspaces**: `w` switches, and the status bar tells what waits in the others.
 - 🎯 **Ctrl+K** to jump anywhere in a few letters (fuzzy search), including to someone you never wrote to or a channel you haven't joined.
 - 🔔 **Unreads and mentions** picked up from your Slack client at startup, then kept up to date.
 - 🎨 **3 layouts, 4 themes** and an accent color, changed live.
@@ -44,7 +45,7 @@ slackterm keeps what matters day to day — reading, replying, finding a message
 
 ## Try it without an account
 
-No account needed: demo mode opens a fake workspace, with a team getting version 2 of its app out the door. Messages arrive on their own, and your teammates react to what you write.
+No account needed: demo mode opens a fake workspace, with a team getting version 2 of its app out the door, and a second one for a weekend project to switch to with `w`. Messages arrive on their own, and your teammates react to what you write.
 
 ```sh
 brew install simoncdna/tap/slackterm   # or another way below
@@ -137,7 +138,7 @@ slackterm completions fish > ~/.config/fish/completions/slackterm.fish
 slackterm login
 ```
 
-slackterm opens Chrome (or Chromium, Brave, Edge) in a dedicated profile: you sign in to your workspace as usual, and it picks up the web session (the `xoxc` token and the `d` cookie). Nothing to create on the Slack side, no app for an admin to approve. The profile is kept, so an expired session usually renews in one click.
+slackterm opens Chrome (or Chromium, Brave, Edge) in a dedicated profile: you sign in to your workspace as usual, and it picks up the web session (the `xoxc` token and the `d` cookie). Nothing to create on the Slack side, no app for an admin to approve. Every workspace you are signed in to in that browser comes along: `w` switches between them, and slackterm opens the last one you used. The profile is kept, so an expired session usually renews in one click.
 
 Credentials are stored in the system keychain: Keychain on macOS, Credential Manager on Windows, Secret Service (GNOME Keyring, KWallet) on Linux. Where there is none — an SSH session, WSL, a window manager without a keyring — they go to a `session.json` file that only you can read, in the data directory (`~/.local/share/slackterm/` on Linux), and `login` tells you so.
 
@@ -168,7 +169,8 @@ slackterm doctor       # check your setup when something is off
 | Key | Action |
 |---|---|
 | `?` | All the keys |
-| `Ctrl+K` | Go to a channel or a person |
+| `Ctrl+K` | Go to a channel, a person or another workspace |
+| `w` | Next workspace, when signed in to several |
 | `/` or `Ctrl+F` | Search messages |
 | `,` | Settings (layout, theme, accent, avatars, clock) |
 | `Tab` / `Shift+Tab` | Next / previous pane |

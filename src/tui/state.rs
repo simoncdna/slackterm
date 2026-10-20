@@ -335,6 +335,8 @@ pub enum SwitcherTarget {
     Person(String),
     /// A public channel the user has not joined.
     Join(String),
+    /// Another workspace, by its place in `App::workspaces`.
+    Workspace(usize),
 }
 
 pub struct SwitcherResult {
@@ -343,7 +345,16 @@ pub struct SwitcherResult {
     pub matched: Vec<usize>,
 }
 
+/// One of the workspaces the user is signed in to, as the others see it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceTab {
+    pub name: String,
+    pub unread: bool,
+    pub mentions: u32,
+}
+
 pub struct App {
+    pub team_id: String,
     pub team_name: String,
     pub my_id: String,
     pub my_name: String,
@@ -404,6 +415,12 @@ pub struct App {
     pub drafts: HashMap<String, Input>,
     /// Where `input` is being written to.
     pub draft_key: Option<String>,
+    /// Every workspace the user is signed in to, this one included.
+    pub workspaces: Vec<WorkspaceTab>,
+    /// This workspace's place in `workspaces`.
+    pub workspace: usize,
+    /// On screen. One in the background does not mark what arrives as read.
+    pub visible: bool,
     /// Where the message being written is drawn, to show suggestions above.
     pub composer_area: Cell<Option<Rect>>,
     pub overlay: Option<Overlay>,
@@ -420,6 +437,7 @@ impl App {
             Focus::Sidebar
         };
         Self {
+            team_id: workspace.team_id.clone(),
             team_name: workspace.team_name.clone(),
             my_id: workspace.user_id.clone(),
             my_name: workspace.user_name.clone(),
@@ -458,6 +476,9 @@ impl App {
             editing: None,
             drafts: HashMap::new(),
             draft_key: None,
+            workspaces: Vec::new(),
+            workspace: 0,
+            visible: true,
             composer_area: Cell::new(None),
             overlay: None,
             connection: Connection::Connecting,
@@ -616,6 +637,22 @@ impl App {
             })
     }
 
+    /// What waits in this workspace, as other workspaces show it.
+    pub fn tab(&self) -> WorkspaceTab {
+        let (unread, mentions) = self
+            .channels
+            .iter()
+            .filter(|c| c.listed)
+            .fold((false, 0), |(unread, mentions), c| {
+                (unread || c.unread, mentions + c.mentions)
+            });
+        WorkspaceTab {
+            name: self.team_name.clone(),
+            unread,
+            mentions,
+        }
+    }
+
     pub fn sidebar_state(&self) -> SidebarState {
         SidebarState {
             collapsed: self.collapsed.clone(),
@@ -714,8 +751,6 @@ impl App {
         self.sections = sections;
     }
 
-    /// Applies the read state from `client.counts` once both it and the
-    /// channel list are known. It is only valid at startup, so it is used once.
     /// Marks the muted conversations, which keep only their mentions.
     pub fn apply_muted(&mut self) {
         for channel in &mut self.channels {
@@ -726,6 +761,8 @@ impl App {
         }
     }
 
+    /// Applies the read state from `client.counts` once both it and the
+    /// channel list are known. It is only valid at startup, so it is used once.
     pub fn apply_counts(&mut self) {
         if !self.channels_loaded {
             return;
@@ -955,6 +992,24 @@ impl App {
                     matched,
                 };
                 results.push((score, false, false, result));
+            }
+        }
+
+        let others = self
+            .workspaces
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != self.workspace);
+        for (index, tab) in others {
+            let label = format!("⇄ {}", tab.name);
+            if let Some((score, matched)) = fuzzy_match(query, &label) {
+                let target = SwitcherTarget::Workspace(index);
+                let result = SwitcherResult {
+                    target,
+                    label,
+                    matched,
+                };
+                results.push((score, false, tab.unread, result));
             }
         }
 

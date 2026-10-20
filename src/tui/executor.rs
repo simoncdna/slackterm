@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use futures_util::{StreamExt, stream};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::config::SidebarFile;
 use crate::platform::find_program;
 use crate::slack::{SlackClient, SlackError, is_slack_file_url};
 
@@ -230,9 +231,15 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 .map_err(failed("delete"))?;
             ApiEvent::Deleted { channel, ts }
         }
-        Command::SaveSidebar(state) => {
-            state
-                .save()
+        // Run by the event loop.
+        Command::NextWorkspace | Command::SwitchWorkspace(_) => return Ok(None),
+        Command::RememberWorkspace(team) => {
+            SidebarFile::save_workspace(&team)
+                .map_err(|e| Failure::Other(format!("sidebar: {e:#}")))?;
+            return Ok(None);
+        }
+        Command::SaveSidebar { team, state } => {
+            SidebarFile::save_state(&team, state)
                 .map_err(|e| Failure::Other(format!("sidebar: {e:#}")))?;
             return Ok(None);
         }

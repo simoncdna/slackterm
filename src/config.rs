@@ -357,7 +357,23 @@ pub struct SidebarState {
     pub tab: SidebarTab,
 }
 
-impl SidebarState {
+/// What the sidebar remembers, for each workspace, and which workspace was
+/// open last. Kept in `sidebar.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SidebarFile {
+    /// Team id of the workspace open last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
+    /// By team id.
+    #[serde(default)]
+    pub teams: BTreeMap<String, SidebarState>,
+    /// The one state of the versions before several workspaces, for the
+    /// workspaces not saved since.
+    #[serde(skip)]
+    earlier: Option<SidebarState>,
+}
+
+impl SidebarFile {
     fn path() -> Result<PathBuf> {
         let dirs = directories::ProjectDirs::from("", "", "slackterm")
             .context("could not find the data directory")?;
@@ -369,11 +385,42 @@ impl SidebarState {
         Self::path()
             .ok()
             .and_then(|path| std::fs::read_to_string(path).ok())
-            .and_then(|contents| toml::from_str(&contents).ok())
+            .map(|contents| Self::from_toml(&contents))
             .unwrap_or_default()
     }
 
-    pub fn save(&self) -> Result<()> {
+    fn from_toml(contents: &str) -> Self {
+        match toml::from_str::<Self>(contents) {
+            Ok(file) if file.workspace.is_some() || !file.teams.is_empty() => file,
+            _ => Self {
+                earlier: toml::from_str(contents).ok(),
+                ..Self::default()
+            },
+        }
+    }
+
+    pub fn state(&self, team: &str) -> SidebarState {
+        self.teams
+            .get(team)
+            .or(self.earlier.as_ref())
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Saves one workspace's state, keeping the others'.
+    pub fn save_state(team: &str, state: SidebarState) -> Result<()> {
+        let mut file = Self::load();
+        file.teams.insert(team.to_string(), state);
+        file.save()
+    }
+
+    pub fn save_workspace(team: &str) -> Result<()> {
+        let mut file = Self::load();
+        file.workspace = Some(team.to_string());
+        file.save()
+    }
+
+    fn save(&self) -> Result<()> {
         let path = Self::path()?;
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
@@ -479,6 +526,31 @@ mod tests {
             toml::from_str::<SidebarState>("").unwrap(),
             SidebarState::default()
         );
+    }
+
+    #[test]
+    fn the_sidebar_file_keeps_each_workspace() {
+        let mut file = SidebarFile::default();
+        let state = SidebarState {
+            collapsed: ["S1".to_string()].into(),
+            tab: SidebarTab::Direct,
+        };
+        file.teams.insert("T1".into(), state.clone());
+        file.workspace = Some("T1".into());
+
+        let read = SidebarFile::from_toml(&toml::to_string(&file).unwrap());
+
+        assert_eq!(read.workspace.as_deref(), Some("T1"));
+        assert_eq!(read.state("T1"), state);
+        assert_eq!(read.state("T2"), SidebarState::default());
+    }
+
+    #[test]
+    fn the_sidebar_file_of_one_workspace_still_reads() {
+        let read = SidebarFile::from_toml("collapsed = [\"S1\"]\ntab = \"direct\"");
+        assert_eq!(read.workspace, None);
+        assert_eq!(read.state("T1").tab, SidebarTab::Direct);
+        assert!(read.state("T9").collapsed.contains("S1"));
     }
 
     #[test]

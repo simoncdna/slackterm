@@ -1005,10 +1005,23 @@ pub fn status_bar(
     if app.thread.is_some() {
         crumbs.push_str(" › thread");
     }
-    let left = vec![
+    let mut left = vec![
         Span::styled(mode, Style::new().fg(theme.on_accent).bg(mode_bg).bold()),
         Span::styled(crumbs, muted),
     ];
+    // The other workspaces, and whether anything waits there.
+    if app.workspaces.len() > 1 {
+        left.push(Span::styled("   ⇄", muted));
+        let others = app
+            .workspaces
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| *index != app.workspace);
+        for (_, tab) in others {
+            left.push(Span::styled(format!(" {}", tab.name), muted));
+            left.extend(super::overlays::workspace_badge(tab, theme));
+        }
+    }
     let left_width: usize = left.iter().map(|s| s.content.width()).sum();
 
     let connection = match &app.connection {
@@ -1113,6 +1126,11 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
         (keys.hint(Action::GoTo), "go to"),
         (keys.hint(Action::Search), "search"),
         (keys.hint(Action::Settings), "settings"),
+        (
+            keys.hint(Action::NextWorkspace)
+                .filter(|_| app.workspaces.len() > 1),
+            "workspace",
+        ),
         (keys.hint(Action::Help), "help"),
         (keys.hint(Action::Quit), "quit"),
     ]);

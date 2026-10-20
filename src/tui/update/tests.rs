@@ -477,7 +477,7 @@ fn enter_on_a_section_collapses_it_and_saves() {
             .contains(&SidebarItem::Channel("C2".into()))
     );
     assert!(
-        matches!(&commands[..], [Command::SaveSidebar(state)] if state.collapsed.contains("S1"))
+        matches!(&commands[..], [Command::SaveSidebar { state, .. }] if state.collapsed.contains("S1"))
     );
 
     update(&mut app, key(KeyCode::Enter));
@@ -650,7 +650,7 @@ fn the_private_tab_lists_direct_messages_by_recency() {
     let commands = update(&mut app, key(KeyCode::Right));
     assert_eq!(app.sidebar_tab, SidebarTab::Direct);
     assert!(
-        matches!(&commands[..], [Command::SaveSidebar(state)] if state.tab == SidebarTab::Direct)
+        matches!(&commands[..], [Command::SaveSidebar { state, .. }] if state.tab == SidebarTab::Direct)
     );
     assert_eq!(
         app.sidebar_items(),
@@ -1399,4 +1399,68 @@ fn a_sent_message_leaves_no_draft() {
     go_to(&mut app, "general");
     assert_eq!(app.input.text(), "");
     assert!(app.draft("C1", None).is_none());
+}
+
+use crate::tui::state::WorkspaceTab;
+
+/// Signed in to acme, shown, and to side, in the background.
+fn with_two_workspaces(app: &mut App) {
+    let tab = |name: &str, mentions| WorkspaceTab {
+        name: name.into(),
+        unread: mentions > 0,
+        mentions,
+    };
+    app.workspaces = vec![tab("acme", 0), tab("side", 2)];
+    app.workspace = 0;
+}
+
+#[test]
+fn a_workspace_in_the_background_keeps_what_arrives_unread() {
+    let mut app = loaded_app();
+    app.visible = false;
+
+    let commands = update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C1".into(),
+            message: message("9.0", "U2", "still there?"),
+        }),
+    );
+
+    assert!(commands.is_empty(), "nothing marked read: {commands:?}");
+    assert!(app.channel("C1").unwrap().unread);
+    let commands = on_shown(&mut app);
+    assert!(app.visible);
+    assert!(!app.channel("C1").unwrap().unread);
+    assert_eq!(
+        commands,
+        [Command::MarkRead {
+            channel: "C1".into(),
+            ts: "9.0".into()
+        }]
+    );
+}
+
+#[test]
+fn w_goes_to_the_next_workspace_when_there_is_one() {
+    let mut app = loaded_app();
+    assert!(update(&mut app, key(KeyCode::Char('w'))).is_empty());
+    with_two_workspaces(&mut app);
+    assert_eq!(
+        update(&mut app, key(KeyCode::Char('w'))),
+        [Command::NextWorkspace]
+    );
+}
+
+#[test]
+fn the_switcher_goes_to_another_workspace() {
+    let mut app = loaded_app();
+    with_two_workspaces(&mut app);
+    update(&mut app, ctrl('k'));
+    typed(&mut app, "side");
+    let commands = update(&mut app, key(KeyCode::Enter));
+    assert!(
+        commands.contains(&Command::SwitchWorkspace(1)),
+        "{commands:?}"
+    );
 }

@@ -4,6 +4,15 @@ What changes from one version of slackterm to the next. The format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- Several workspaces at once: `w` or Ctrl+K switches between them, the status bar tells what waits in the others, and slackterm opens the last one you used. The others stay connected, and what arrives there stays unread until you look.
+- The demo has a second workspace to switch to.
+
+### Changed
+
+- Folded sections and the open tab are remembered for each workspace.
+
 ## [0.2.0] - 2026-10-20
 
 ### Added
