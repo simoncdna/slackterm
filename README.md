@@ -6,6 +6,8 @@
 
 Real time, threads, search, sections: all from the keyboard, without leaving your shell.
 
+[![CI](https://github.com/simoncdna/slackterm/actions/workflows/ci.yml/badge.svg)](https://github.com/simoncdna/slackterm/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/simoncdna/slackterm?color=f0b35a)](https://github.com/simoncdna/slackterm/releases/latest)
 ![Rust](https://img.shields.io/badge/Rust-2024-f0b35a?logo=rust&logoColor=white)
 ![ratatui](https://img.shields.io/badge/TUI-ratatui-c59bea)
 ![Real time](https://img.shields.io/badge/real%20time-RTM%20websocket-7ccb8a)
@@ -44,7 +46,7 @@ slackterm keeps what matters day to day — reading, replying, finding a message
 No account needed: demo mode opens a fake workspace, with a team getting version 2 of its app out the door. Messages arrive on their own, and your teammates react to what you write.
 
 ```sh
-cargo install --git https://github.com/simoncdna/slackterm
+brew install simoncdna/tap/slackterm   # or another way below
 slackterm demo
 ```
 
@@ -94,11 +96,31 @@ Select a message, press `r`: the reactions you use most in your conversations co
 
 ## Install
 
-You need [Rust](https://rustup.rs) 1.88 or later.
+**macOS and Linux**, with [Homebrew](https://brew.sh):
 
 ```sh
-cargo install --git https://github.com/simoncdna/slackterm
+brew install simoncdna/tap/slackterm
 ```
+
+or with the install script:
+
+```sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/simoncdna/slackterm/releases/latest/download/slackterm-installer.sh | sh
+```
+
+**Windows**, in PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/simoncdna/slackterm/releases/latest/download/slackterm-installer.ps1 | iex"
+```
+
+**With Cargo**, if you have [Rust](https://rustup.rs) 1.90 or later:
+
+```sh
+cargo install slackterm
+```
+
+Prebuilt binaries for every platform are also on the [releases page](https://github.com/simoncdna/slackterm/releases/latest).
 
 ## Sign in
 
@@ -216,6 +238,16 @@ The animations in this README are [VHS](https://github.com/charmbracelet/vhs) sc
 brew install vhs
 docs/record.sh          # every video
 docs/record.sh search   # only docs/tapes/search.tape
+```
+
+### Releasing
+
+A version tag builds and publishes everything with [cargo-dist](https://github.com/axodotdev/cargo-dist): binaries for macOS, Linux and Windows on GitHub Releases, the install scripts and the Homebrew formula.
+
+```sh
+# bump `version` in Cargo.toml and commit, then:
+git tag v0.2.0 && git push origin v0.2.0
+cargo publish
 ```
 
 ## License
