@@ -1100,3 +1100,53 @@ fn an_expired_session_says_how_to_sign_in_again() {
     update(&mut app, Event::Rtm(RtmEvent::SessionExpired));
     assert!(matches!(app.connection, Connection::SessionExpired));
 }
+
+#[test]
+fn the_switcher_lists_public_channels_once() {
+    let mut app = loaded_app();
+    let commands = update(&mut app, ctrl('k'));
+    assert!(commands.contains(&Command::LoadPublicChannels));
+    update(&mut app, key(KeyCode::Esc));
+    let commands = update(&mut app, ctrl('k'));
+    assert!(!commands.contains(&Command::LoadPublicChannels));
+}
+
+#[test]
+fn writes_to_someone_new_from_the_switcher() {
+    let mut app = loaded_app();
+    app.users.insert("U3".into(), user("U3", "sarah"));
+    update(&mut app, ctrl('k'));
+    typed(&mut app, "sarah");
+
+    let commands = update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(commands, [Command::OpenDirect("U3".into())]);
+    let commands = update(&mut app, Event::Api(ApiEvent::Opened(direct("D3", "U3"))));
+    assert_eq!(app.current.as_deref(), Some("D3"));
+    assert_eq!(app.focus, Focus::Messages);
+    assert!(app.channel("D3").is_some_and(|c| c.listed));
+    assert_eq!(commands, [Command::LoadHistory("D3".into())]);
+}
+
+#[test]
+fn joins_a_public_channel_from_the_switcher() {
+    let mut app = loaded_app();
+    update(&mut app, ctrl('k'));
+    update(
+        &mut app,
+        Event::Api(ApiEvent::PublicChannels(vec![
+            conversation("C1", "general"),
+            conversation("C9", "support"),
+        ])),
+    );
+    typed(&mut app, "support");
+
+    let commands = update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(commands, [Command::Join("C9".into())]);
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Opened(conversation("C9", "support"))),
+    );
+    assert_eq!(app.current.as_deref(), Some("C9"));
+}

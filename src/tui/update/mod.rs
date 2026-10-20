@@ -16,7 +16,7 @@ use crate::slack::{
 use super::input::Input;
 use super::state::{
     App, Channel, Connection, EmojiPicker, Focus, History, Jump, Mode, Overlay, ReactionTarget,
-    SETTINGS_ROWS, Search, SearchStatus, SidebarItem, Thread,
+    SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget, Thread,
 };
 
 // Events are few and short-lived; boxing the large variants would only add noise.
@@ -77,6 +77,10 @@ pub enum ApiEvent {
     },
     Counts(Vec<ConversationCount>),
     CountsUnavailable,
+    /// Every public channel of the workspace, for the switcher.
+    PublicChannels(Vec<Conversation>),
+    /// A conversation the user just started or joined, to open.
+    Opened(Conversation),
     /// Slack no longer accepts the session.
     SessionExpired,
     Failed(String),
@@ -140,6 +144,11 @@ pub enum Command {
         name: String,
         add: bool,
     },
+    LoadPublicChannels,
+    /// Open the direct conversation with this user, starting it if needed.
+    OpenDirect(String),
+    /// Join this public channel.
+    Join(String),
 }
 
 const PAGE: usize = 10;
@@ -167,7 +176,18 @@ pub fn update(app: &mut App, event: Event) -> Vec<Command> {
         Event::Rtm(event) => on_rtm(app, event),
     };
     commands.extend(request_pictures(app));
+    commands.extend(request_public_channels(app));
     commands
+}
+
+/// The switcher also offers the public channels the user has not joined:
+/// they are listed the first time it opens.
+fn request_public_channels(app: &mut App) -> Option<Command> {
+    let switcher = matches!(app.overlay, Some(Overlay::Switcher { .. }));
+    (switcher && !app.public_channels_requested).then(|| {
+        app.public_channels_requested = true;
+        Command::LoadPublicChannels
+    })
 }
 
 /// Asks for the pictures on screen not requested yet: the authors' when
@@ -353,6 +373,19 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
             app.counts_unavailable = true;
             app.apply_counts();
             Vec::new()
+        }
+        ApiEvent::PublicChannels(channels) => {
+            app.public_channels = channels;
+            Vec::new()
+        }
+        ApiEvent::Opened(conversation) => {
+            let id = conversation.id.clone();
+            if app.channel(&id).is_none() {
+                app.channels.push(Channel::from_conversation(conversation));
+                app.sort_channels();
+            }
+            app.focus = Focus::Messages;
+            open_channel(app, &id)
         }
         ApiEvent::Picture { key, image } => {
             app.pictures.insert(key, image);

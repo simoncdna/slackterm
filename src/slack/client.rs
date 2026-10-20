@@ -134,6 +134,34 @@ impl SlackClient {
 
     /// Read state of the conversations the web client shows in its sidebar.
     /// Undocumented: only answers sessions captured from the browser.
+    /// Every public channel of the workspace, joined or not.
+    pub async fn public_channels(&self) -> Result<Vec<Conversation>, SlackError> {
+        let params = vec![
+            ("types", "public_channel".into()),
+            ("exclude_archived", "true".into()),
+            ("limit", "1000".into()),
+        ];
+        self.paginate("conversations.list", params, "channels")
+            .await
+    }
+
+    /// The direct conversation with `user`, created if there is none yet.
+    pub async fn conversations_open(&self, user: &str) -> Result<Conversation, SlackError> {
+        let params = vec![("users", user.into()), ("return_im", "true".into())];
+        let body = self.call_value("conversations.open", &params).await?;
+        let mut conversation: Conversation = serde_json::from_value(body["channel"].clone())?;
+        // Only the id is sure to come back.
+        conversation.is_im = true;
+        conversation.user.get_or_insert_with(|| user.to_string());
+        Ok(conversation)
+    }
+
+    pub async fn conversations_join(&self, channel: &str) -> Result<Conversation, SlackError> {
+        let params = vec![("channel", channel.into())];
+        let body = self.call_value("conversations.join", &params).await?;
+        Ok(serde_json::from_value(body["channel"].clone())?)
+    }
+
     pub async fn client_counts(&self) -> Result<Vec<ConversationCount>, SlackError> {
         let counts: Counts = self.call("client.counts", Vec::new()).await?;
         Ok(counts
@@ -379,6 +407,31 @@ mod tests {
 
         assert_eq!(auth.team, "Acme");
         assert_eq!(auth.user_id, "U1");
+    }
+
+    #[tokio::test]
+    async fn opening_a_direct_conversation_knows_its_member() {
+        let server = MockServer::start().await;
+        Mock::given(path("/conversations.open"))
+            .and(body_string_contains("users=U2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true, "channel": {"id": "D9"}
+            })))
+            .mount(&server)
+            .await;
+
+        let conversation = client(&server).conversations_open("U2").await.unwrap();
+
+        assert_eq!(conversation.id, "D9");
+        assert!(conversation.is_im);
+        assert_eq!(conversation.user.as_deref(), Some("U2"));
+    }
+
+    #[test]
+    fn knows_when_the_session_is_over() {
+        assert!(SlackError::Api("invalid_auth".into()).is_session_expired());
+        assert!(SlackError::Api("token_revoked".into()).is_session_expired());
+        assert!(!SlackError::Api("channel_not_found".into()).is_session_expired());
     }
 
     #[tokio::test]

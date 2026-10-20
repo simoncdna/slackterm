@@ -192,6 +192,21 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 },
             }
         }
+        Command::LoadPublicChannels => client
+            .public_channels()
+            .await
+            .map(ApiEvent::PublicChannels)
+            .map_err(failed("channels"))?,
+        Command::OpenDirect(user) => client
+            .conversations_open(&user)
+            .await
+            .map(ApiEvent::Opened)
+            .map_err(failed("direct message"))?,
+        Command::Join(channel) => client
+            .conversations_join(&channel)
+            .await
+            .map(ApiEvent::Opened)
+            .map_err(failed("join"))?,
         Command::SaveSidebar(state) => {
             state
                 .save()

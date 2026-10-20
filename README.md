@@ -35,7 +35,7 @@ slackterm keeps what matters day to day — reading, replying, finding a message
 - 🧵 **Threads** in their own pane, to read and reply without losing the channel.
 - 🗂️ **Your Slack sections** (with their emoji), foldable, and a **DMs** tab sorted by activity.
 - 🔎 **Search** through the whole history, with `in:#channel`, `from:@person`, `during:today`…
-- 🎯 **Ctrl+K** to jump anywhere in a few letters (fuzzy search).
+- 🎯 **Ctrl+K** to jump anywhere in a few letters (fuzzy search), including to someone you never wrote to or a channel you haven't joined.
 - 🔔 **Unreads and mentions** picked up from your Slack client at startup, then kept up to date.
 - 🎨 **3 layouts, 4 themes** and an accent color, changed live.
 - 🖼️ **Avatars**: profile pictures in terminals that can draw images (Kitty, iTerm2, WezTerm, Sixel), colored initials elsewhere.
@@ -58,7 +58,7 @@ Nothing leaves your machine, and your settings are neither read nor changed.
 
 ### Get around like in Slack
 
-The sidebar shows the sections you set up in Slack. `Enter` folds a section, but conversations waiting for you (unreads, mentions) stay visible. `←` / `→` switches between **Channels** and **DMs**, where your direct messages are sorted by recent activity. And to go faster: `Ctrl+K`, three letters, `Enter`.
+The sidebar shows the sections you set up in Slack. `Enter` folds a section, but conversations waiting for you (unreads, mentions) stay visible. `←` / `→` switches between **Channels** and **DMs**, where your direct messages are sorted by recent activity. And to go faster: `Ctrl+K`, three letters, `Enter`. It finds everyone in the workspace and every public channel too: pick someone to start a conversation, or a channel to join it.
 
 <img src="docs/media/navigation.gif" alt="Folding the v2 launch section, the DMs tab, then Ctrl+K “dsg” to open #design" width="100%">
 

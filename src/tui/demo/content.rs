@@ -27,12 +27,17 @@ const DM_CAMILLE: &str = "D01CAM";
 const DM_HUGO: &str = "D02HUG";
 const DM_INES: &str = "D03INE";
 const GROUP: &str = "G08MPD";
+/// Public channels the user has not joined, to show joining.
+const MARKETING: &str = "C09MKT";
+const SUPPORT: &str = "C10SUP";
 
 const DEPLOY_BOT: &str = "deploy-bot";
 
 pub struct Content {
     pub users: Vec<User>,
     pub conversations: Vec<Conversation>,
+    /// Every public channel, joined or not.
+    pub public_channels: Vec<Conversation>,
     pub sections: Vec<ChannelSection>,
     pub counts: Vec<ConversationCount>,
     /// Every message, thread replies included, oldest first.
@@ -78,9 +83,12 @@ pub fn build() -> Content {
         list.sort_by(|a, b| a.ts.cmp(&b.ts));
     }
     let counts = counts(&messages);
+    let conversations = conversations();
+    let public_channels = public_channels(&conversations);
     Content {
         users: users(),
-        conversations: conversations(),
+        conversations,
+        public_channels,
         sections: sections(),
         counts,
         messages,
@@ -159,6 +167,29 @@ fn conversations() -> Vec<Conversation> {
     .into_iter()
     .map(from_json)
     .collect()
+}
+
+fn public_channels(joined: &[Conversation]) -> Vec<Conversation> {
+    let others = [
+        (
+            MARKETING,
+            "marketing",
+            "Campaigns, launches and the newsletter",
+        ),
+        (SUPPORT, "support", "Questions from customers"),
+    ]
+    .map(|(id, name, topic)| from_json(json!({"id": id, "name": name, "topic": {"value": topic}})));
+    joined
+        .iter()
+        .filter(|c| !c.is_im && !c.is_mpim && !c.is_private)
+        .cloned()
+        .chain(others)
+        .collect()
+}
+
+/// A direct conversation with `user`, as `conversations.open` starts one.
+pub fn direct_conversation(user: &str) -> Conversation {
+    from_json(json!({"id": format!("D{user}"), "is_im": true, "user": user}))
 }
 
 fn sections() -> Vec<ChannelSection> {

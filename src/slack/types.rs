@@ -9,6 +9,9 @@ pub struct User {
     pub real_name: Option<String>,
     #[serde(default)]
     pub profile: UserProfile,
+    /// Deactivated: listed by Slack, but nobody to write to.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

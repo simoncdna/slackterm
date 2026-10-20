@@ -62,12 +62,19 @@ fn on_switcher_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
             let results = app.switcher_results(&query);
             let chosen = results
                 .get(cursor.min(results.len().saturating_sub(1)))
-                .map(|r| app.channels[r.channel].id.clone());
+                .map(|r| r.target.clone());
             app.overlay = None;
-            if let Some(id) = chosen {
-                app.focus = Focus::Messages;
-                return open_channel(app, &id);
-            }
+            return match chosen {
+                Some(SwitcherTarget::Channel(index)) => {
+                    let id = app.channels[index].id.clone();
+                    app.focus = Focus::Messages;
+                    open_channel(app, &id)
+                }
+                // Opened once Slack has the conversation ready.
+                Some(SwitcherTarget::Person(user)) => vec![Command::OpenDirect(user)],
+                Some(SwitcherTarget::Join(channel)) => vec![Command::Join(channel)],
+                None => Vec::new(),
+            };
         }
         _ => {}
     }

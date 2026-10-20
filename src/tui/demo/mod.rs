@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 
 use crate::session::Workspace;
 use crate::slack::rtm::RtmEvent;
-use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, Message, SearchMatch};
+use crate::slack::{Conversation, HIGHLIGHT_END, HIGHLIGHT_START, Message, SearchMatch};
 
 use super::update::{ApiEvent, Command, Event};
 use content::{Content, ME};
@@ -193,6 +193,15 @@ impl Demo {
             // Run by the event loop, which never hands it to the demo.
             Command::Play(_) => {}
             Command::MarkRead { .. } | Command::SaveSettings { .. } | Command::SaveSidebar(_) => {}
+            Command::LoadPublicChannels => send(ApiEvent::PublicChannels(
+                self.state().content.public_channels.clone(),
+            )),
+            Command::OpenDirect(user) => send(ApiEvent::Opened(self.state().open_direct(&user))),
+            Command::Join(channel) => {
+                if let Some(conversation) = self.state().join(&channel) {
+                    send(ApiEvent::Opened(conversation));
+                }
+            }
         }
     }
 
@@ -294,6 +303,33 @@ impl State {
             }));
         }
         events
+    }
+
+    /// The direct conversation with `user`, started the first time.
+    fn open_direct(&mut self, user: &str) -> Conversation {
+        let conversations = &mut self.content.conversations;
+        if let Some(existing) = conversations
+            .iter()
+            .find(|c| c.is_im && c.user.as_deref() == Some(user))
+        {
+            return existing.clone();
+        }
+        let conversation = content::direct_conversation(user);
+        conversations.push(conversation.clone());
+        conversation
+    }
+
+    fn join(&mut self, channel: &str) -> Option<Conversation> {
+        let conversation = self
+            .content
+            .public_channels
+            .iter()
+            .find(|c| c.id == channel)?
+            .clone();
+        if !self.content.conversations.iter().any(|c| c.id == channel) {
+            self.content.conversations.push(conversation.clone());
+        }
+        Some(conversation)
     }
 
     fn direct_partner(&self, channel: &str) -> Option<String> {
@@ -500,6 +536,54 @@ mod tests {
             let bytes = content::avatar(&user.id).unwrap();
             assert!(image::load_from_memory(bytes).is_ok(), "{}", user.id);
         }
+    }
+
+    #[test]
+    fn starts_a_direct_conversation_once() {
+        let demo = Demo::new();
+        let first = demo.state().open_direct("U05SAR");
+        let again = demo.state().open_direct("U05SAR");
+        assert_eq!(first.id, again.id);
+        let copies = demo
+            .state()
+            .content
+            .conversations
+            .iter()
+            .filter(|c| c.id == first.id)
+            .count();
+        assert_eq!(copies, 1);
+        // Camille already has one.
+        assert_eq!(demo.state().open_direct("U01CAM").id, "D01CAM");
+    }
+
+    #[test]
+    fn joins_the_channels_not_joined_yet() {
+        let demo = Demo::new();
+        let joinable: Vec<String> = {
+            let state = demo.state();
+            let joined: Vec<&str> = state
+                .content
+                .conversations
+                .iter()
+                .map(|c| c.id.as_str())
+                .collect();
+            state
+                .content
+                .public_channels
+                .iter()
+                .filter(|c| !joined.contains(&c.id.as_str()))
+                .map(|c| c.id.clone())
+                .collect()
+        };
+        assert_eq!(joinable.len(), 2);
+        let joined = demo.state().join(&joinable[0]).unwrap();
+        assert!(
+            demo.state()
+                .content
+                .conversations
+                .iter()
+                .any(|c| c.id == joined.id)
+        );
     }
 
     #[test]

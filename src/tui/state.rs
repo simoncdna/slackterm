@@ -309,8 +309,18 @@ pub enum Overlay {
 
 pub const SETTINGS_ROWS: usize = 5;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwitcherTarget {
+    /// One of `App::channels`.
+    Channel(usize),
+    /// Someone the user has no direct conversation with yet.
+    Person(String),
+    /// A public channel the user has not joined.
+    Join(String),
+}
+
 pub struct SwitcherResult {
-    pub channel: usize,
+    pub target: SwitcherTarget,
     pub label: String,
     pub matched: Vec<usize>,
 }
@@ -338,6 +348,9 @@ pub struct App {
     pub pending_unread: HashSet<String>,
     pub current: Option<String>,
     pub sections: Vec<Section>,
+    /// Every public channel of the workspace, once the switcher asked.
+    pub public_channels: Vec<Conversation>,
+    pub public_channels_requested: bool,
     /// Ids of the collapsed sections.
     pub collapsed: BTreeSet<String>,
     pub sidebar_tab: SidebarTab,
@@ -390,6 +403,8 @@ impl App {
             pending_unread: HashSet::new(),
             current: None,
             sections: Section::defaults(),
+            public_channels: Vec::new(),
+            public_channels_requested: false,
             collapsed: BTreeSet::new(),
             sidebar_tab: SidebarTab::Channels,
             sidebar_cursor: None,
@@ -798,31 +813,76 @@ impl App {
             .find(|m| m.ts == ts)
     }
 
+    /// What the switcher offers for `query`, best first: the user's
+    /// conversations, then people to write to and public channels to join.
     pub fn switcher_results(&self, query: &str) -> Vec<SwitcherResult> {
-        let mut results: Vec<(i32, bool, SwitcherResult)> = self
+        // Score, already one of the user's conversations, unread.
+        let mut results: Vec<(i32, bool, bool, SwitcherResult)> = Vec::new();
+        for (index, channel) in self.channels.iter().enumerate() {
+            let label = self.channel_label(channel);
+            if let Some((score, matched)) = fuzzy_match(query, &label) {
+                let target = SwitcherTarget::Channel(index);
+                let result = SwitcherResult {
+                    target,
+                    label,
+                    matched,
+                };
+                results.push((score, true, channel.unread, result));
+            }
+        }
+
+        let with_conversation: HashSet<&str> = self
             .channels
             .iter()
-            .enumerate()
-            .filter_map(|(index, channel)| {
-                let label = self.channel_label(channel);
-                let (score, matched) = fuzzy_match(query, &label)?;
-                Some((
-                    score,
-                    channel.unread,
-                    SwitcherResult {
-                        channel: index,
-                        label,
-                        matched,
-                    },
-                ))
-            })
+            .filter(|c| c.kind == ChannelKind::Direct)
+            .filter_map(|c| c.dm_user.as_deref())
             .collect();
+        let people = self
+            .users
+            .values()
+            .filter(|u| !u.deleted && !with_conversation.contains(u.id.as_str()));
+        for user in people {
+            // By the name Slack shows, else by handle.
+            let found = [user.display_name(), user.name.as_str()]
+                .into_iter()
+                .map(|name| format!("@{name}"))
+                .find_map(|label| Some((fuzzy_match(query, &label)?, label)));
+            if let Some(((score, matched), label)) = found {
+                let target = SwitcherTarget::Person(user.id.clone());
+                let result = SwitcherResult {
+                    target,
+                    label,
+                    matched,
+                };
+                results.push((score, false, false, result));
+            }
+        }
+
+        let joined: HashSet<&str> = self.channels.iter().map(|c| c.id.as_str()).collect();
+        let joinable = self
+            .public_channels
+            .iter()
+            .filter(|c| !joined.contains(c.id.as_str()));
+        for conversation in joinable {
+            let label = format!("#{}", conversation.name.as_deref().unwrap_or_default());
+            if let Some((score, matched)) = fuzzy_match(query, &label) {
+                let target = SwitcherTarget::Join(conversation.id.clone());
+                let result = SwitcherResult {
+                    target,
+                    label,
+                    matched,
+                };
+                results.push((score, false, false, result));
+            }
+        }
+
         results.sort_by(|a, b| {
             b.0.cmp(&a.0)
                 .then(b.1.cmp(&a.1))
-                .then_with(|| a.2.label.cmp(&b.2.label))
+                .then(b.2.cmp(&a.2))
+                .then_with(|| a.3.label.cmp(&b.3.label))
         });
-        results.into_iter().take(50).map(|(_, _, r)| r).collect()
+        results.into_iter().take(50).map(|r| r.3).collect()
     }
 
     /// Where typed text goes: the open thread when it has focus, else the channel.
@@ -907,5 +967,35 @@ mod tests {
         let results = app.switcher_results("dep");
         let labels: Vec<&str> = results.iter().map(|r| r.label.as_str()).collect();
         assert_eq!(labels, ["#deploys", "#data-exports"]);
+    }
+
+    #[test]
+    fn switcher_offers_new_people_and_channels_after_known_ones() {
+        let mut app = app();
+        for (id, name) in [("U2", "alice"), ("U3", "alain"), ("U4", "albert")] {
+            app.users.insert(id.into(), user(id, name));
+        }
+        app.users.get_mut("U4").unwrap().deleted = true;
+        app.channels = vec![
+            Channel::from_conversation(direct("D2", "U2")),
+            Channel::from_conversation(conversation("C1", "general")),
+        ];
+        app.public_channels = vec![
+            conversation("C1", "general"),
+            conversation("C9", "algorithms"),
+        ];
+
+        let results = app.switcher_results("al");
+
+        let found: Vec<(&str, SwitcherTarget)> = results
+            .iter()
+            .map(|r| (r.label.as_str(), r.target.clone()))
+            .collect();
+        assert_eq!(found[0], ("@alice", SwitcherTarget::Channel(0)));
+        assert!(found.contains(&("@alain", SwitcherTarget::Person("U3".into()))));
+        assert!(found.contains(&("#algorithms", SwitcherTarget::Join("C9".into()))));
+        // Joined already, so offered once; deactivated people not at all.
+        assert!(found.contains(&("#general", SwitcherTarget::Channel(1))));
+        assert_eq!(found.len(), 4, "{found:?}");
     }
 }

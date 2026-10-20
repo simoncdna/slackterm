@@ -10,7 +10,7 @@ use crate::config::{AvatarStyle, Choice, Settings};
 use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::input::Input;
 use crate::tui::keymap::{ACTIONS, Scope};
-use crate::tui::state::{App, EmojiPicker, Search, SearchStatus};
+use crate::tui::state::{App, EmojiPicker, Search, SearchStatus, SwitcherTarget};
 use crate::tui::theme::Theme;
 
 use super::text::{Styled, align_left, local_time, short_datetime, truncate, truncate_styled};
@@ -60,7 +60,7 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
         area,
         theme,
         "go to",
-        format!("{} / {}", results.len(), app.channels.len()),
+        format!("{} found", results.len()),
     );
 
     let [input_area, list_area, hint_area] = Layout::vertical([
@@ -86,7 +86,6 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
         .skip(start)
         .take(visible)
         .map(|(index, result)| {
-            let channel = &app.channels[result.channel];
             let selected = index == cursor;
             let mut spans = vec![if selected {
                 Span::styled("› ", Style::new().fg(theme.accent))
@@ -101,13 +100,25 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
                 };
                 spans.push(Span::styled(c.to_string(), style));
             }
-            if channel.mentions > 0 {
-                spans.push(Span::styled(
-                    format!("  @{}", channel.mentions),
-                    Style::new().fg(theme.accent),
-                ));
-            } else if channel.unread {
-                spans.push(Span::styled("  •", Style::new().fg(theme.unread)));
+            match &result.target {
+                SwitcherTarget::Channel(index) => {
+                    let channel = &app.channels[*index];
+                    if channel.mentions > 0 {
+                        spans.push(Span::styled(
+                            format!("  @{}", channel.mentions),
+                            Style::new().fg(theme.accent),
+                        ));
+                    } else if channel.unread {
+                        spans.push(Span::styled("  •", Style::new().fg(theme.unread)));
+                    }
+                }
+                SwitcherTarget::Person(_) => spans.push(Span::styled(
+                    "  start a conversation",
+                    Style::new().fg(theme.muted),
+                )),
+                SwitcherTarget::Join(_) => {
+                    spans.push(Span::styled("  join", Style::new().fg(theme.muted)))
+                }
             }
             let line = Line::from(spans);
             if selected {
