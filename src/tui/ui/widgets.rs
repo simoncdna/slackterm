@@ -20,7 +20,7 @@ use crate::tui::theme::Theme;
 
 use super::text::{
     Styled, align_left, align_right, day_label, format_duration, format_size, local_time,
-    recency_label, truncate, wrap,
+    recency_label, time_of_day, time_width, truncate, wrap,
 };
 
 /// Consecutive messages from the same author within this delay share a header.
@@ -176,9 +176,10 @@ impl MessagePiece<'_> {
     }
 
     fn time(&self) -> Span<'static> {
-        let time = local_time(self.message.epoch_seconds())
-            .format("%H:%M")
-            .to_string();
+        let time = time_of_day(
+            local_time(self.message.epoch_seconds()),
+            self.app.settings.clock,
+        );
         Span::styled(time, Style::new().fg(self.theme.muted))
     }
 
@@ -392,18 +393,20 @@ impl MessagePiece<'_> {
 
     fn stream(&self, lines: &mut Vec<Line<'static>>, previews: &mut Vec<PreviewAnchor>) {
         const NICK: usize = 16;
-        const PREFIX: usize = 5 + 1 + NICK + 3;
+        let time_column = time_width(self.app.settings.clock);
+        let prefix = time_column + 1 + NICK + 3;
         let bar = || Span::styled(" │ ", Style::new().fg(self.theme.border));
-        let blank = || Span::raw(" ".repeat(5 + 1 + NICK));
+        let blank = || Span::raw(" ".repeat(time_column + 1 + NICK));
         let author = self.author();
+        let time = self.time();
         let head = vec![
-            self.time(),
+            Span::styled(align_right(&time.content, time_column), time.style),
             Span::raw(" "),
             Span::styled(align_right(&author.content, NICK), author.style),
             bar(),
         ];
 
-        let body = wrap(&self.body(), self.width.saturating_sub(PREFIX));
+        let body = wrap(&self.body(), self.width.saturating_sub(prefix));
         for (i, row) in body.into_iter().enumerate() {
             let mut spans = if i == 0 {
                 head.clone()
@@ -413,7 +416,7 @@ impl MessagePiece<'_> {
             spans.extend(to_spans(row));
             lines.push(Line::from(spans));
         }
-        self.previews(lines, || vec![blank(), bar()], PREFIX, previews);
+        self.previews(lines, || vec![blank(), bar()], prefix, previews);
         for extra in self.extras() {
             let mut spans = vec![blank(), bar()];
             spans.extend(extra);
@@ -686,7 +689,7 @@ pub fn sidebar(
                 let when = (app.sidebar_tab == SidebarTab::Direct)
                     .then(|| epoch_of(&channel.latest))
                     .flatten()
-                    .map(|epoch| recency_label(local_time(epoch), today));
+                    .map(|epoch| recency_label(local_time(epoch), today, app.settings.clock));
                 channel_row(app, theme, channel, width, is_cursor, number, when)
             }
         };

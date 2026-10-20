@@ -117,6 +117,28 @@ impl Choice for AvatarStyle {
     }
 }
 
+/// How times of day are written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Clock {
+    /// `14:02`
+    #[default]
+    #[serde(rename = "24h")]
+    TwentyFourHour,
+    /// `2:02 PM`
+    #[serde(rename = "12h")]
+    TwelveHour,
+}
+
+impl Choice for Clock {
+    const ALL: &'static [Self] = &[Self::TwentyFourHour, Self::TwelveHour];
+    fn label(self) -> &'static str {
+        match self {
+            Self::TwentyFourHour => "24-hour",
+            Self::TwelveHour => "12-hour",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -127,6 +149,8 @@ pub struct Settings {
     pub accent: Accent,
     #[serde(default)]
     pub avatars: AvatarStyle,
+    #[serde(default)]
+    pub clock: Clock,
 }
 
 impl Settings {
@@ -223,9 +247,11 @@ mod tests {
             theme: ThemeName::Gruvbox,
             accent: Accent::Lilac,
             avatars: AvatarStyle::Initials,
+            clock: Clock::TwelveHour,
         };
         let toml = settings.to_toml().unwrap();
         assert!(toml.contains("layout = \"stream\""));
+        assert!(toml.contains("clock = \"12h\""));
         assert_eq!(Settings::from_toml(&toml).unwrap(), settings);
     }
 

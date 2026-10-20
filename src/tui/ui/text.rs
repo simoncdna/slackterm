@@ -2,6 +2,8 @@ use chrono::{DateTime, Datelike, Local, NaiveDate, TimeZone};
 use ratatui::style::Style;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use crate::config::Clock;
+
 pub type Styled = (String, Style);
 
 /// Word-wraps styled text to `width` columns. Newlines start a new row and
@@ -191,14 +193,30 @@ const SHORT_MONTHS: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+/// `14:02`, or `2:02 PM` on a 12-hour clock.
+pub fn time_of_day(time: DateTime<Local>, clock: Clock) -> String {
+    match clock {
+        Clock::TwentyFourHour => time.format("%H:%M").to_string(),
+        Clock::TwelveHour => time.format("%-I:%M %p").to_string(),
+    }
+}
+
+/// The widest a `time_of_day` gets, to line times up in a column.
+pub fn time_width(clock: Clock) -> usize {
+    match clock {
+        Clock::TwentyFourHour => 5,
+        Clock::TwelveHour => 8,
+    }
+}
+
 /// `10:02` today, `Oct 8 10:02` this year, `Oct 8, 2025` before.
-pub fn short_datetime(time: DateTime<Local>, today: NaiveDate) -> String {
+pub fn short_datetime(time: DateTime<Local>, today: NaiveDate, clock: Clock) -> String {
     let day = time.date_naive();
     let month = SHORT_MONTHS[day.month0() as usize];
     if day == today {
-        time.format("%H:%M").to_string()
+        time_of_day(time, clock)
     } else if day.year() == today.year() {
-        format!("{month} {} {}", day.day(), time.format("%H:%M"))
+        format!("{month} {} {}", day.day(), time_of_day(time, clock))
     } else {
         format!("{month} {}, {}", day.day(), day.year())
     }
@@ -208,12 +226,12 @@ const SHORT_WEEKDAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Su
 
 /// How long ago a conversation was active: `14:02`, `yesterday`, `Mon`,
 /// `Oct 8`, then `Dec 2025`.
-pub fn recency_label(time: DateTime<Local>, today: NaiveDate) -> String {
+pub fn recency_label(time: DateTime<Local>, today: NaiveDate, clock: Clock) -> String {
     let day = time.date_naive();
     let days_ago = (today - day).num_days();
     let month = SHORT_MONTHS[day.month0() as usize];
     match days_ago {
-        ..=0 => time.format("%H:%M").to_string(),
+        ..=0 => time_of_day(time, clock),
         1 => "yesterday".to_string(),
         2..=6 => SHORT_WEEKDAYS[day.weekday().num_days_from_monday() as usize].to_string(),
         _ if day.year() == today.year() => format!("{month} {}", day.day()),
@@ -281,20 +299,44 @@ mod tests {
     fn formats_short_dates() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
         let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 10, 2, 0).single().unwrap();
-        assert_eq!(short_datetime(at(2026, 10, 8), today), "10:02");
-        assert_eq!(short_datetime(at(2026, 3, 2), today), "Mar 2 10:02");
-        assert_eq!(short_datetime(at(2025, 12, 1), today), "Dec 1, 2025");
+        let clock = Clock::TwentyFourHour;
+        assert_eq!(short_datetime(at(2026, 10, 8), today, clock), "10:02");
+        assert_eq!(short_datetime(at(2026, 3, 2), today, clock), "Mar 2 10:02");
+        assert_eq!(short_datetime(at(2025, 12, 1), today, clock), "Dec 1, 2025");
+        let clock = Clock::TwelveHour;
+        assert_eq!(
+            short_datetime(at(2026, 3, 2), today, clock),
+            "Mar 2 10:02 AM"
+        );
+    }
+
+    #[test]
+    fn writes_times_on_either_clock() {
+        let at = |h, m| {
+            Local
+                .with_ymd_and_hms(2026, 10, 8, h, m, 0)
+                .single()
+                .unwrap()
+        };
+        assert_eq!(time_of_day(at(14, 2), Clock::TwentyFourHour), "14:02");
+        assert_eq!(time_of_day(at(14, 2), Clock::TwelveHour), "2:02 PM");
+        assert_eq!(time_of_day(at(0, 5), Clock::TwelveHour), "12:05 AM");
+        assert_eq!(time_of_day(at(12, 59), Clock::TwelveHour).len(), 8);
+        assert_eq!(time_width(Clock::TwelveHour), 8);
     }
 
     #[test]
     fn labels_recency() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
         let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 14, 2, 0).single().unwrap();
-        assert_eq!(recency_label(at(2026, 10, 8), today), "14:02");
-        assert_eq!(recency_label(at(2026, 10, 7), today), "yesterday");
-        assert_eq!(recency_label(at(2026, 10, 5), today), "Mon");
-        assert_eq!(recency_label(at(2026, 9, 2), today), "Sep 2");
-        assert_eq!(recency_label(at(2025, 12, 1), today), "Dec 2025");
+        let label = |y, m, d| recency_label(at(y, m, d), today, Clock::TwentyFourHour);
+        assert_eq!(label(2026, 10, 8), "14:02");
+        assert_eq!(label(2026, 10, 7), "yesterday");
+        assert_eq!(label(2026, 10, 5), "Mon");
+        assert_eq!(label(2026, 9, 2), "Sep 2");
+        assert_eq!(label(2025, 12, 1), "Dec 2025");
+        let label = recency_label(at(2026, 10, 8), today, Clock::TwelveHour);
+        assert_eq!(label, "2:02 PM");
     }
 
     #[test]

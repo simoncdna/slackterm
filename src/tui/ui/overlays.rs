@@ -137,7 +137,7 @@ pub fn settings(
 ) {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(64);
-    let height = 11.min(screen.height);
+    let height = 12.min(screen.height);
     let area = Rect {
         x: screen.x + (screen.width - width) / 2,
         y: screen.y + (screen.height - height) / 3,
@@ -157,6 +157,7 @@ pub fn settings(
         ("Theme", settings.theme.label()),
         ("Accent", settings.accent.label()),
         ("Avatars", settings.avatars.label()),
+        ("Clock", settings.clock.label()),
     ];
     // The picture protocol in use, to tell why only initials show.
     let notes = [
@@ -164,6 +165,7 @@ pub fn settings(
         None,
         None,
         (settings.avatars == AvatarStyle::Images).then_some(images),
+        None,
     ];
     let mut lines = vec![Line::default()];
     for (index, ((name, value), note)) in entries.into_iter().zip(notes).enumerate() {
@@ -330,7 +332,7 @@ fn result_lines(
         Span::styled(
             format!(
                 " · {}",
-                short_datetime(local_time(found.epoch_seconds()), today)
+                short_datetime(local_time(found.epoch_seconds()), today, app.settings.clock)
             ),
             Style::new().fg(theme.muted),
         ),

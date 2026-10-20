@@ -76,7 +76,7 @@ Select a message, press `r`: the reactions you use most in your conversations co
 
 ### Three layouts, switched live
 
-`,` opens the settings (layout, theme, accent, avatars): every change applies right away and is saved for next time.
+`,` opens the settings (layout, theme, accent, avatars, clock): every change applies right away and is saved for next time.
 
 <img src="docs/media/layouts.gif" alt="Switching from the three-pane layout to the dense stream, then to focus mode" width="100%">
 
@@ -159,7 +159,7 @@ slackterm logout       # delete the credentials
 |---|---|
 | `Ctrl+K` | Go to a channel or a person |
 | `/` or `Ctrl+F` | Search messages |
-| `,` | Settings (layout, theme, accent, avatars) |
+| `,` | Settings (layout, theme, accent, avatars, clock) |
 | `Tab` / `Shift+Tab` | Next / previous pane |
 | `1` `2` `3` | Sidebar, messages, thread |
 | `q` or `Ctrl+C` | Quit |
@@ -207,6 +207,7 @@ layout = "panels"   # panels | stream | focus
 theme = "night"     # night | light | gruvbox | nord
 accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
+clock = "24h"       # 24h | 12h
 ```
 
 Folded sections and the open tab are remembered separately, in `sidebar.toml`.

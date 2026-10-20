@@ -290,7 +290,7 @@ pub enum Overlay {
     Emoji(EmojiPicker),
 }
 
-pub const SETTINGS_ROWS: usize = 4;
+pub const SETTINGS_ROWS: usize = 5;
 
 pub struct SwitcherResult {
     pub channel: usize,

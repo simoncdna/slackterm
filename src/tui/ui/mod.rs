@@ -255,6 +255,19 @@ mod tests {
     }
 
     #[test]
+    fn the_stream_lines_up_twelve_hour_times() {
+        let mut app = sample_app();
+        app.settings.layout = Layout::Stream;
+        app.settings.clock = crate::config::Clock::TwelveHour;
+        let time = text::time_of_day(text::local_time(1_700_000_000), app.settings.clock);
+        let text = screen(&app, 110, 22);
+        assert!(
+            text.contains(&format!("{time:>8} {:>16} │ hi", "camille")),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn headers_start_with_initials_unless_avatars_are_off() {
         let mut app = sample_app();
         // The first message, in the machine's time zone.
