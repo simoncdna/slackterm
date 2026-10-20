@@ -13,6 +13,7 @@ use crate::slack::{
     ChannelSection, Conversation, ConversationCount, FileKind, Message, SearchMatch, User, mrkdwn,
 };
 
+use super::compose;
 use super::input::Input;
 use super::state::{
     App, Channel, Connection, EmojiPicker, Focus, History, Jump, Mode, Overlay, ReactionTarget,
@@ -175,6 +176,7 @@ pub fn update(app: &mut App, event: Event) -> Vec<Command> {
         Event::Api(event) => on_api(app, event),
         Event::Rtm(event) => on_rtm(app, event),
     };
+    compose::refresh(app);
     commands.extend(request_pictures(app));
     commands.extend(request_public_channels(app));
     commands

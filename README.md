@@ -33,6 +33,7 @@ slackterm keeps what matters day to day — reading, replying, finding a message
 
 - ⚡ **Real time**: messages, edits, deletions and reactions arrive live, with automatic reconnection.
 - 🧵 **Threads** in their own pane, to read and reply without losing the channel.
+- ✍️ **Mentions** that notify: type `@` or `#` and slackterm suggests people, `@here` and channels.
 - 🗂️ **Your Slack sections** (with their emoji), foldable, and a **DMs** tab sorted by activity.
 - 🔎 **Search** through the whole history, with `in:#channel`, `from:@person`, `during:today`…
 - 🎯 **Ctrl+K** to jump anywhere in a few letters (fuzzy search), including to someone you never wrote to or a channel you haven't joined.
@@ -193,6 +194,7 @@ slackterm logout       # delete the credentials
 | Key | Action |
 |---|---|
 | `Enter` | Send |
+| `@` or `#`, then `Tab` or `Enter` | Mention someone, `@here` or a channel, picked from the suggestions |
 | `Shift+Enter`, `Alt+Enter` or `Ctrl+J` | New line |
 | `Ctrl+A` / `Ctrl+E` | Start / end of line |
 | `Ctrl+W` or `Alt+Backspace` | Delete the previous word |

@@ -272,6 +272,9 @@ fn on_insert_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     let newline = key
         .modifiers
         .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT);
+    if !newline && on_suggestions_key(app, key) {
+        return Vec::new();
+    }
     match key.code {
         KeyCode::Esc => app.mode = Mode::Normal,
         KeyCode::Enter if newline => app.input.insert('\n'),
@@ -294,6 +297,41 @@ fn on_insert_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     Vec::new()
 }
 
+/// Keys that pick a suggestion while some show. Returns whether the key
+/// was theirs; the others write the message.
+fn on_suggestions_key(app: &mut App, key: KeyEvent) -> bool {
+    let Some(completion) = app.completion.clone() else {
+        return false;
+    };
+    let suggestions = compose::suggestions(app, &completion);
+    if suggestions.is_empty() {
+        return false;
+    }
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let last = suggestions.len() - 1;
+    let selected = completion.selected.min(last);
+    let moved = match key.code {
+        KeyCode::Tab | KeyCode::Enter => {
+            compose::accept(app, &completion, &suggestions[selected]);
+            return true;
+        }
+        KeyCode::Esc => {
+            app.completion = None;
+            app.completion_closed = Some(completion.start);
+            return true;
+        }
+        KeyCode::Down => (selected + 1) % (last + 1),
+        KeyCode::Char('n') if ctrl => (selected + 1) % (last + 1),
+        KeyCode::Up => (selected + last) % (last + 1),
+        KeyCode::Char('p') if ctrl => (selected + last) % (last + 1),
+        _ => return false,
+    };
+    if let Some(completion) = &mut app.completion {
+        completion.selected = moved;
+    }
+    true
+}
+
 fn send(app: &mut App) -> Vec<Command> {
     if app.input.text().trim().is_empty() {
         return Vec::new();
@@ -301,17 +339,11 @@ fn send(app: &mut App) -> Vec<Command> {
     let Some((channel, thread_ts)) = app.compose_target() else {
         return Vec::new();
     };
-    let text = escape(app.input.take().trim());
+    let typed = app.input.take();
+    let text = compose::encode(typed.trim(), app);
     vec![Command::Send {
         channel,
         text,
         thread_ts,
     }]
-}
-
-/// Slack reads `<`, `>` and `&` as markup, so typed text must escape them.
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }

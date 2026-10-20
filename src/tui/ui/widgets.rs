@@ -200,8 +200,7 @@ impl MessagePiece<'_> {
         } else {
             Style::new().fg(theme.fg)
         };
-        let names = |id: &str| self.app.users.get(id).map(|u| u.display_name().to_string());
-        let mut body: Vec<Styled> = mrkdwn::parse(&self.message.text, &self.app.my_id, names)
+        let mut body: Vec<Styled> = mrkdwn::parse(&self.message.text, &self.app.my_id, self.app)
             .into_iter()
             .map(|segment| {
                 let style = match segment.kind {
@@ -895,6 +894,9 @@ pub fn input_box(
     placeholder: &str,
 ) {
     let active = is_target && app.mode == Mode::Insert;
+    if active {
+        app.composer_area.set(Some(area));
+    }
     let inner = match style {
         InputStyle::Boxed { title } => {
             let block = Block::bordered()
@@ -1043,6 +1045,15 @@ pub fn status_bar(
 
 /// The keys that matter where the user is, as the keymap has them.
 fn hints(app: &App) -> Vec<(String, &'static str)> {
+    let suggesting = app
+        .completion
+        .as_ref()
+        .is_some_and(|c| !crate::tui::compose::suggestions(app, c).is_empty());
+    if app.mode == Mode::Insert && suggesting {
+        return [("tab", "complete"), ("↑↓", "choose"), ("esc", "close")]
+            .map(|(key, label)| (key.to_string(), label))
+            .into();
+    }
     if app.mode == Mode::Insert {
         return [("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")]
             .map(|(key, label)| (key.to_string(), label))

@@ -24,7 +24,13 @@ pub struct Segment {
 
 const ENTITIES: [(&str, char); 3] = [("&amp;", '&'), ("&lt;", '<'), ("&gt;", '>')];
 
-pub fn parse(text: &str, my_id: &str, user_name: impl Fn(&str) -> Option<String>) -> Vec<Segment> {
+/// The names behind the ids a message refers to.
+pub trait Names {
+    fn user(&self, id: &str) -> Option<String>;
+    fn channel(&self, id: &str) -> Option<String>;
+}
+
+pub fn parse(text: &str, my_id: &str, names: &impl Names) -> Vec<Segment> {
     let mut segments = Vec::new();
     let mut buffer = String::new();
     let mut in_code = false;
@@ -42,7 +48,7 @@ pub fn parse(text: &str, my_id: &str, user_name: impl Fn(&str) -> Option<String>
             && let Some(end) = rest.find('>')
         {
             flush(&mut segments, &mut buffer, Kind::Text);
-            segments.push(reference(&rest[1..end], my_id, &user_name));
+            segments.push(reference(&rest[1..end], my_id, names));
             rest = &rest[end + 1..];
             continue;
         }
@@ -118,21 +124,27 @@ fn push(segments: &mut Vec<Segment>, text: String, kind: Kind) {
 }
 
 /// The inside of a `<…>` reference: user, channel, special mention or link.
-fn reference(inner: &str, my_id: &str, user_name: &impl Fn(&str) -> Option<String>) -> Segment {
+fn reference(inner: &str, my_id: &str, names: &impl Names) -> Segment {
+    // Slack sometimes leaves the label empty: `<#C123|>`.
     let (target, label) = match inner.split_once('|') {
-        Some((target, label)) => (target, Some(label)),
+        Some((target, label)) => (target, Some(label).filter(|l| !l.is_empty())),
         None => (inner, None),
     };
     let segment = |text: String, kind| Segment { text, kind };
 
     if let Some(id) = target.strip_prefix('@') {
-        let name = user_name(id)
+        let name = names
+            .user(id)
             .or(label.map(str::to_string))
             .unwrap_or_else(|| id.to_string());
         return segment(format!("@{name}"), Kind::Mention { me: id == my_id });
     }
     if let Some(id) = target.strip_prefix('#') {
-        return segment(format!("#{}", label.unwrap_or(id)), Kind::Channel);
+        let name = label
+            .map(str::to_string)
+            .or_else(|| names.channel(id))
+            .unwrap_or_else(|| id.to_string());
+        return segment(format!("#{name}"), Kind::Channel);
     }
     if let Some(special) = target.strip_prefix('!') {
         return match special {
@@ -140,7 +152,7 @@ fn reference(inner: &str, my_id: &str, user_name: &impl Fn(&str) -> Option<Strin
                 segment(format!("@{special}"), Kind::Mention { me: true })
             }
             _ if special.starts_with("subteam^") => segment(
-                label.unwrap_or("@groupe").to_string(),
+                label.unwrap_or("@group").to_string(),
                 Kind::Mention { me: false },
             ),
             _ => segment(label.unwrap_or(special).to_string(), Kind::Text),
@@ -154,12 +166,19 @@ fn reference(inner: &str, my_id: &str, user_name: &impl Fn(&str) -> Option<Strin
 mod tests {
     use super::*;
 
-    fn names(id: &str) -> Option<String> {
-        (id == "U2").then(|| "Camille".to_string())
+    struct Team;
+
+    impl Names for Team {
+        fn user(&self, id: &str) -> Option<String> {
+            (id == "U2").then(|| "Camille".to_string())
+        }
+        fn channel(&self, id: &str) -> Option<String> {
+            (id == "C2").then(|| "dev".to_string())
+        }
     }
 
     fn render(text: &str) -> Vec<(String, Kind)> {
-        parse(text, "U1", names)
+        parse(text, "U1", &Team)
             .into_iter()
             .map(|s| (s.text, s.kind))
             .collect()
@@ -188,6 +207,20 @@ mod tests {
                 ("the PR".into(), Kind::Link),
                 (" ".into(), Kind::Text),
                 ("@here".into(), Kind::Mention { me: true }),
+            ]
+        );
+    }
+
+    #[test]
+    fn names_channels_slack_left_unlabeled() {
+        assert_eq!(
+            render("<#C2> <#C2|> <#C9>"),
+            vec![
+                ("#dev".into(), Kind::Channel),
+                (" ".into(), Kind::Text),
+                ("#dev".into(), Kind::Channel),
+                (" ".into(), Kind::Text),
+                ("#C9".into(), Kind::Channel),
             ]
         );
     }

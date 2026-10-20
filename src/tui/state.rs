@@ -2,13 +2,16 @@ use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
+use ratatui::layout::Rect;
+
 use crate::config::{Colors, Layout, Settings, SidebarState, SidebarTab};
 use crate::session::Workspace;
 use crate::slack::{
     ChannelSection, Conversation, ConversationCount, Message, SearchChannel, SearchMatch, User,
-    emoji,
+    emoji, mrkdwn,
 };
 
+use super::compose::Completion;
 use super::fuzzy::fuzzy_match;
 use super::input::Input;
 use super::keymap::Keymap;
@@ -373,6 +376,13 @@ pub struct App {
     pub focus: Focus,
     pub mode: Mode,
     pub input: Input,
+    /// The name being typed after `@` or `#`, to suggest who or what.
+    pub completion: Option<Completion>,
+    /// Where the user closed the suggestions, so they stay closed for that
+    /// name.
+    pub completion_closed: Option<usize>,
+    /// Where the message being written is drawn, to show suggestions above.
+    pub composer_area: Cell<Option<Rect>>,
     pub overlay: Option<Overlay>,
     pub connection: Connection,
     pub notice: Option<String>,
@@ -419,6 +429,9 @@ impl App {
             focus,
             mode: Mode::Normal,
             input: Input::default(),
+            completion: None,
+            completion_closed: None,
+            composer_area: Cell::new(None),
             overlay: None,
             connection: Connection::Connecting,
             notice: None,
@@ -473,6 +486,17 @@ impl App {
             ChannelKind::Group => "&",
         };
         format!("{prefix}{}", self.channel_name(channel))
+    }
+
+    /// The name of a channel the user is in, or of a public one.
+    pub fn channel_name_of(&self, id: &str) -> Option<String> {
+        self.channel(id)
+            .filter(|c| !c.is_direct())
+            .map(|c| c.name.clone())
+            .or_else(|| {
+                let public = self.public_channels.iter().find(|c| c.id == id)?;
+                public.name.clone()
+            })
     }
 
     pub fn channel(&self, id: &str) -> Option<&Channel> {
@@ -893,6 +917,16 @@ impl App {
             }
             _ => self.current.clone().map(|channel| (channel, None)),
         }
+    }
+}
+
+impl mrkdwn::Names for App {
+    fn user(&self, id: &str) -> Option<String> {
+        self.users.get(id).map(|u| u.display_name().to_string())
+    }
+
+    fn channel(&self, id: &str) -> Option<String> {
+        self.channel_name_of(id)
     }
 }
 

@@ -17,6 +17,17 @@ impl Input {
         self.text.is_empty()
     }
 
+    /// Byte offset of the cursor.
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// Replaces a byte range with `text`, leaving the cursor after it.
+    pub fn replace(&mut self, range: std::ops::Range<usize>, text: &str) {
+        self.cursor = range.start + text.len();
+        self.text.replace_range(range, text);
+    }
+
     pub fn insert(&mut self, c: char) {
         self.text.insert(self.cursor, c);
         self.cursor += c.len_utf8();

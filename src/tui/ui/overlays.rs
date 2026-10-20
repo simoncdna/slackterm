@@ -5,9 +5,11 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 use crate::config::{AvatarStyle, Choice, Settings};
 use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
+use crate::tui::compose::{self, Completion};
 use crate::tui::input::Input;
 use crate::tui::keymap::{ACTIONS, Scope};
 use crate::tui::state::{App, EmojiPicker, Search, SearchStatus, SwitcherTarget};
@@ -44,7 +46,7 @@ fn hint_line(theme: &Theme, hints: &[(&str, &str)]) -> Line<'static> {
     Line::from(spans)
 }
 
-pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, cursor: usize) {
+pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, cursor: usize) -> Rect {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(72);
     let height = screen.height.saturating_sub(4).min(18);
@@ -137,6 +139,7 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
         )),
         hint_area,
     );
+    area
 }
 
 pub fn settings(
@@ -146,7 +149,7 @@ pub fn settings(
     path: Option<&Path>,
     images: &str,
     row: usize,
-) {
+) -> Rect {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(64);
     let height = 12.min(screen.height);
@@ -221,9 +224,10 @@ pub fn settings(
         )),
         hint_area,
     );
+    area
 }
 
-pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
+pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) -> Rect {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(110);
     let height = screen.height.saturating_sub(2).min(34);
@@ -311,6 +315,7 @@ pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
         )),
         hint_area,
     );
+    area
 }
 
 /// Two rows per result: where and who, then the text with the matched
@@ -353,12 +358,11 @@ fn result_lines(
         header.push(Span::styled("  ↳ thread", Style::new().fg(theme.link)));
     }
 
-    let names = |id: &str| app.users.get(id).map(|u| u.display_name().to_string());
     let normal = Style::new().fg(theme.fg);
     let highlight = Style::new().fg(theme.accent).bold();
     let mut highlighted = false;
     let mut parts: Vec<Styled> = Vec::new();
-    for segment in mrkdwn::parse(&found.text, &app.my_id, names) {
+    for segment in mrkdwn::parse(&found.text, &app.my_id, app) {
         let base = match segment.kind {
             mrkdwn::Kind::Text => normal,
             mrkdwn::Kind::Code => normal.bg(theme.panel),
@@ -388,7 +392,7 @@ fn result_lines(
     (Line::from(header), Line::from(snippet))
 }
 
-pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiPicker) {
+pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiPicker) -> Rect {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(64);
     let height = screen.height.saturating_sub(4).min(22);
@@ -413,8 +417,7 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
     ])
     .areas(inner);
 
-    let names = |id: &str| app.users.get(id).map(|u| u.display_name().to_string());
-    let preview: String = mrkdwn::parse(&picker.target.text, &app.my_id, names)
+    let preview: String = mrkdwn::parse(&picker.target.text, &app.my_id, app)
         .into_iter()
         .map(|segment| segment.text.replace('\n', " "))
         .collect();
@@ -507,10 +510,11 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
         )),
         hint_area,
     );
+    area
 }
 
 /// Every key: the keymap's, then the ones that never change.
-pub fn help(frame: &mut Frame, app: &App, theme: &Theme, scroll: usize) {
+pub fn help(frame: &mut Frame, app: &App, theme: &Theme, scroll: usize) -> Rect {
     let lines = help_lines(app, theme);
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(72);
@@ -538,12 +542,14 @@ pub fn help(frame: &mut Frame, app: &App, theme: &Theme, scroll: usize) {
         Paragraph::new(hint_line(theme, &[("j/k", "scroll"), ("esc", "close")])),
         hint_area,
     );
+    area
 }
 
 /// Keys of the message box, which the keymap leaves alone so that typing
 /// stays typing.
 const WRITING: &[(&str, &str)] = &[
     ("⏎", "Send"),
+    ("@ #  tab", "Mention someone or a channel: type, then pick"),
     ("⇧⏎ alt+⏎ ^j", "New line"),
     ("^a ^e", "Start / end of the line"),
     ("^w alt+⌫", "Delete the previous word"),
@@ -597,4 +603,59 @@ fn help_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
     lines.push(row("^c", "Quit"));
     lines.push(row("esc", "Close the thread or the popup, deselect"));
     lines
+}
+
+/// People or channels for the name being typed, just above the message box.
+pub fn suggestions(
+    frame: &mut Frame,
+    app: &App,
+    theme: &Theme,
+    completion: &Completion,
+) -> Option<Rect> {
+    let suggestions = compose::suggestions(app, completion);
+    let composer = app.composer_area.get()?;
+    if suggestions.is_empty() {
+        return None;
+    }
+    let screen = frame.area();
+    let width = screen.width.saturating_sub(composer.x).min(64);
+    let height = suggestions.len() as u16 + 2;
+    let area = Rect {
+        x: composer.x,
+        y: composer.y.saturating_sub(height),
+        width,
+        height: height.min(composer.y),
+    };
+    let title = if completion.sigil == '#' {
+        "channels"
+    } else {
+        "people"
+    };
+    let inner = popup(frame, area, theme, title, "tab to complete".into());
+    let selected = completion.selected.min(suggestions.len() - 1);
+    let rows: Vec<Line> = suggestions
+        .iter()
+        .enumerate()
+        .map(|(index, suggestion)| {
+            let room = (inner.width as usize).saturating_sub(suggestion.text.width() + 4);
+            let line = Line::from(vec![
+                Span::styled(
+                    if index == selected { "› " } else { "  " },
+                    Style::new().fg(theme.accent),
+                ),
+                Span::styled(suggestion.text.clone(), Style::new().fg(theme.fg).bold()),
+                Span::styled(
+                    format!("  {}", truncate(&suggestion.detail, room)),
+                    Style::new().fg(theme.muted),
+                ),
+            ]);
+            if index == selected {
+                line.style(Style::new().bg(theme.surface))
+            } else {
+                line
+            }
+        })
+        .collect();
+    frame.render_widget(Paragraph::new(rows), inner);
+    Some(area)
 }

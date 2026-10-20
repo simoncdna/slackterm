@@ -15,6 +15,7 @@ use super::theme::Theme;
 
 pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
     let theme = Theme::new(&app.settings, &app.colors);
+    pictures.begin_frame();
     frame.render_widget(
         Block::new().style(Style::new().bg(theme.bg).fg(theme.fg)),
         frame.area(),
@@ -24,7 +25,11 @@ pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
         Layout::Stream => layouts::stream(frame, app, &theme, pictures),
         Layout::Focus => layouts::focus(frame, app, &theme, pictures),
     }
-    match &app.overlay {
+    let mut popups = Vec::new();
+    if let Some(completion) = &app.completion {
+        popups.extend(overlays::suggestions(frame, app, &theme, completion));
+    }
+    let overlay = match &app.overlay {
         Some(Overlay::Switcher { query, cursor }) => {
             overlays::switcher(frame, app, &theme, query, *cursor)
         }
@@ -39,8 +44,10 @@ pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
         Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
         Some(Overlay::Emoji(picker)) => overlays::emoji_picker(frame, app, &theme, picker),
         Some(Overlay::Help { scroll }) => overlays::help(frame, app, &theme, *scroll),
-        None => {}
-    }
+        None => return pictures.hide_under(frame, &popups, theme.bg),
+    };
+    popups.push(overlay);
+    pictures.hide_under(frame, &popups, theme.bg);
 }
 
 #[cfg(test)]
@@ -306,6 +313,23 @@ mod tests {
         let text = screen(&app, 160, 30);
         assert!(text.contains("e react"), "{text}");
         assert!(!text.contains("r react"), "{text}");
+    }
+
+    #[test]
+    fn suggests_people_above_the_message_box() {
+        let mut app = sample_app();
+        app.focus = Focus::Messages;
+        app.mode = Mode::Insert;
+        app.input.insert_str("thanks @cam");
+        crate::tui::compose::refresh(&mut app);
+        // The popup goes where the message box was last drawn.
+        screen(&app, 100, 30);
+
+        let text = screen(&app, 100, 30);
+
+        assert!(text.contains("people"), "{text}");
+        assert!(text.contains("› @camille"), "{text}");
+        assert!(text.contains("tab complete"), "{text}");
     }
 
     #[test]

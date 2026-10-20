@@ -1150,3 +1150,59 @@ fn joins_a_public_channel_from_the_switcher() {
     );
     assert_eq!(app.current.as_deref(), Some("C9"));
 }
+
+/// Writing in #general, where Hugo and Hélène can be mentioned.
+fn writing_app() -> App {
+    let mut app = loaded_app();
+    app.users.insert("U2".into(), user("U2", "hugo"));
+    app.users.insert("U3".into(), user("U3", "helene"));
+    update(&mut app, key(KeyCode::Char('2')));
+    update(&mut app, key(KeyCode::Char('i')));
+    app
+}
+
+#[test]
+fn completes_a_mention_and_sends_it_as_one() {
+    let mut app = writing_app();
+    typed(&mut app, "hi @hu");
+    assert!(app.completion.is_some());
+
+    update(&mut app, key(KeyCode::Tab));
+    assert_eq!(app.input.text(), "hi @hugo ");
+    assert!(app.completion.is_none());
+    typed(&mut app, "& co");
+    let commands = update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(
+        commands,
+        [Command::Send {
+            channel: "C1".into(),
+            text: "hi <@U2> &amp; co".into(),
+            thread_ts: None
+        }]
+    );
+}
+
+#[test]
+fn enter_picks_a_suggestion_rather_than_sending() {
+    let mut app = writing_app();
+    typed(&mut app, "@h");
+    update(&mut app, key(KeyCode::Down));
+    let commands = update(&mut app, key(KeyCode::Enter));
+    assert!(commands.is_empty());
+    assert_eq!(app.input.text(), "@hugo ");
+}
+
+#[test]
+fn esc_closes_the_suggestions_then_stops_writing() {
+    let mut app = writing_app();
+    typed(&mut app, "@hu");
+    update(&mut app, key(KeyCode::Esc));
+    assert!(app.completion.is_none());
+    assert_eq!(app.mode, Mode::Insert);
+    typed(&mut app, "g");
+    assert!(app.completion.is_none(), "closed for this name");
+
+    update(&mut app, key(KeyCode::Esc));
+    assert_eq!(app.mode, Mode::Normal);
+}

@@ -8,6 +8,7 @@ use image::DynamicImage;
 use image::imageops::FilterType;
 use ratatui::Frame;
 use ratatui::layout::{Rect, Size};
+use ratatui::style::Color;
 use ratatui_image::picker::{Picker, ProtocolType};
 use ratatui_image::protocol::Protocol;
 use ratatui_image::{Image, Resize};
@@ -44,6 +45,8 @@ pub struct Pictures {
     picker: Option<Picker>,
     /// Encoded pictures, by key and size in cells.
     protocols: HashMap<(String, Size), Protocol>,
+    /// Where pictures are drawn in the frame being drawn.
+    drawn: Vec<Rect>,
 }
 
 impl Pictures {
@@ -57,6 +60,7 @@ impl Pictures {
         Self {
             picker,
             protocols: HashMap::new(),
+            drawn: Vec::new(),
         }
     }
 
@@ -65,6 +69,7 @@ impl Pictures {
         Self {
             picker: None,
             protocols: HashMap::new(),
+            drawn: Vec::new(),
         }
     }
 
@@ -93,6 +98,31 @@ impl Pictures {
         self.picker.is_some()
     }
 
+    pub fn begin_frame(&mut self) {
+        self.drawn.clear();
+    }
+
+    /// Blanks the pictures a popup overlaps, out of the popup.
+    ///
+    /// A picture is sent once, in its first cell, and the terminal is told
+    /// to leave the others alone. A popup drawn over part of it, then gone,
+    /// would leave its text there. Blanked, the picture changes, so it is
+    /// sent whole again once the popup is gone.
+    pub fn hide_under(&self, frame: &mut Frame, popups: &[Rect], background: Color) {
+        let buffer = frame.buffer_mut();
+        for picture in &self.drawn {
+            if !popups.iter().any(|popup| popup.intersects(*picture)) {
+                continue;
+            }
+            for position in picture.positions() {
+                if !popups.iter().any(|popup| popup.contains(position)) {
+                    buffer[position].reset();
+                    buffer[position].set_bg(background);
+                }
+            }
+        }
+    }
+
     /// Draws the picture stored under `key` over `area`, once downloaded.
     /// Returns whether it did, what is underneath staying visible otherwise.
     pub fn draw(
@@ -118,6 +148,7 @@ impl Pictures {
             self.protocols.insert(slot.clone(), protocol);
         }
         frame.render_widget(Image::new(&self.protocols[&slot]), area);
+        self.drawn.push(area);
         true
     }
 }

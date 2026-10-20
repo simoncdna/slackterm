@@ -1,3 +1,4 @@
+mod compose;
 mod demo;
 mod executor;
 mod fuzzy;
