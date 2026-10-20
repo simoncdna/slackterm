@@ -1080,3 +1080,23 @@ fn o_opens_the_first_link_when_there_is_no_file() {
         [Command::OpenUrl("https://youtu.be/dQw4w9WgXcQ".into())]
     );
 }
+
+#[test]
+fn an_expired_session_says_how_to_sign_in_again() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char('/')));
+    for c in "deploy".chars() {
+        update(&mut app, key(KeyCode::Char(c)));
+    }
+    update(&mut app, key(KeyCode::Enter));
+
+    update(&mut app, Event::Api(ApiEvent::SessionExpired));
+
+    assert!(matches!(app.connection, Connection::SessionExpired));
+    assert!(matches!(
+        &app.overlay,
+        Some(Overlay::Search(search)) if matches!(search.status, SearchStatus::Failed(_))
+    ));
+    update(&mut app, Event::Rtm(RtmEvent::SessionExpired));
+    assert!(matches!(app.connection, Connection::SessionExpired));
+}

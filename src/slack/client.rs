@@ -22,6 +22,22 @@ pub enum SlackError {
     Api(String),
 }
 
+/// What Slack answers once it no longer accepts the session.
+const SESSION_EXPIRED: &[&str] = &[
+    "invalid_auth",
+    "not_authed",
+    "token_revoked",
+    "token_expired",
+    "account_inactive",
+];
+
+impl SlackError {
+    /// Slack no longer accepts the session: only signing in again helps.
+    pub fn is_session_expired(&self) -> bool {
+        matches!(self, Self::Api(code) if SESSION_EXPIRED.contains(&code.as_str()))
+    }
+}
+
 /// Web API client authenticated as the web client is: `xoxc` token + `d` cookie.
 #[derive(Clone)]
 pub struct SlackClient {

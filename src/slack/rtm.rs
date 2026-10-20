@@ -49,16 +49,31 @@ pub enum RtmEvent {
         name: String,
         user: String,
     },
+    /// Slack no longer accepts the session, so reconnecting stopped.
+    SessionExpired,
+}
+
+/// Why a connection ended.
+enum End {
+    Dropped(String),
+    SessionExpired,
 }
 
 pub fn spawn(client: SlackClient, events: UnboundedSender<RtmEvent>) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut backoff = MIN_BACKOFF;
         loop {
-            let (greeted, reason) = run(&client, &events).await;
+            let (greeted, end) = run(&client, &events).await;
             if events.is_closed() {
                 return;
             }
+            let reason = match end {
+                End::Dropped(reason) => reason,
+                End::SessionExpired => {
+                    let _ = events.send(RtmEvent::SessionExpired);
+                    return;
+                }
+            };
             if greeted {
                 backoff = MIN_BACKOFF;
             }
@@ -74,21 +89,23 @@ pub fn spawn(client: SlackClient, events: UnboundedSender<RtmEvent>) -> JoinHand
 
 /// Runs one connection until it drops. Returns whether Slack said hello (the
 /// connection was healthy, so the backoff can reset) and why it ended.
-async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool, String) {
+async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool, End) {
+    let dropped = |e: &dyn std::fmt::Display| End::Dropped(e.to_string());
     let rtm = match client.rtm_connect().await {
         Ok(rtm) => rtm,
-        Err(e) => return (false, e.to_string()),
+        Err(e) if e.is_session_expired() => return (false, End::SessionExpired),
+        Err(e) => return (false, dropped(&e)),
     };
     let mut request = match rtm.url.as_str().into_client_request() {
         Ok(request) => request,
-        Err(e) => return (false, e.to_string()),
+        Err(e) => return (false, dropped(&e)),
     };
     if let Ok(cookie) = format!("d={}", client.cookie_d()).parse() {
         request.headers_mut().insert(COOKIE, cookie);
     }
     let mut socket = match connect_async(request).await {
         Ok((socket, _)) => socket,
-        Err(e) => return (false, e.to_string()),
+        Err(e) => return (false, dropped(&e)),
     };
 
     let mut greeted = false;
@@ -101,8 +118,8 @@ async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool,
             incoming = socket.next() => {
                 let message = match incoming {
                     Some(Ok(message)) => message,
-                    Some(Err(e)) => return (greeted, e.to_string()),
-                    None => return (greeted, "connection closed".into()),
+                    Some(Err(e)) => return (greeted, dropped(&e)),
+                    None => return (greeted, dropped(&"connection closed")),
                 };
                 let WsMessage::Text(text) = message else { continue };
                 let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
@@ -111,20 +128,20 @@ async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool,
                         greeted = true;
                         Some(RtmEvent::Connected)
                     }
-                    Some("goodbye") => return (greeted, "Slack asked to reconnect".into()),
+                    Some("goodbye") => return (greeted, dropped(&"Slack asked to reconnect")),
                     _ => parse(&value),
                 };
                 if let Some(event) = event
                     && events.send(event).is_err()
                 {
-                    return (greeted, "app closed".into());
+                    return (greeted, dropped(&"app closed"));
                 }
             }
             _ = ping.tick() => {
                 let ping = json!({"id": next_id, "type": "ping"}).to_string();
                 next_id += 1;
                 if let Err(e) = socket.send(WsMessage::text(ping)).await {
-                    return (greeted, e.to_string());
+                    return (greeted, dropped(&e));
                 }
             }
         }

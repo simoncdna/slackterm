@@ -77,6 +77,8 @@ pub enum ApiEvent {
     },
     Counts(Vec<ConversationCount>),
     CountsUnavailable,
+    /// Slack no longer accepts the session.
+    SessionExpired,
     Failed(String),
 }
 
@@ -386,10 +388,25 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
             app.notice = Some(format!("could not react with :{name}: ({reason})"));
             Vec::new()
         }
+        ApiEvent::SessionExpired => {
+            session_expired(app);
+            Vec::new()
+        }
         ApiEvent::Failed(reason) => {
             app.notice = Some(reason);
             Vec::new()
         }
+    }
+}
+
+/// Every request fails from now on: the status bar says how to fix it, and
+/// a search waiting for results stops waiting.
+fn session_expired(app: &mut App) {
+    app.connection = Connection::SessionExpired;
+    if let Some(Overlay::Search(search)) = &mut app.overlay
+        && matches!(search.status, SearchStatus::Loading)
+    {
+        search.status = SearchStatus::Failed("session expired".into());
     }
 }
 
@@ -406,6 +423,7 @@ fn default_channel(app: &App) -> Option<String> {
 fn on_rtm(app: &mut App, event: RtmEvent) -> Vec<Command> {
     match event {
         RtmEvent::Connected => app.connection = Connection::Connected,
+        RtmEvent::SessionExpired => session_expired(app),
         RtmEvent::Reconnecting { in_secs, reason } => {
             app.connection = Connection::Reconnecting { in_secs, reason }
         }

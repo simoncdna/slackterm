@@ -192,7 +192,13 @@ pub enum Mode {
 pub enum Connection {
     Connecting,
     Connected,
-    Reconnecting { in_secs: u64, reason: String },
+    Reconnecting {
+        in_secs: u64,
+        reason: String,
+    },
+    /// Slack no longer accepts the session: nothing works until the user
+    /// signs in again.
+    SessionExpired,
 }
 
 #[derive(Debug, Default)]

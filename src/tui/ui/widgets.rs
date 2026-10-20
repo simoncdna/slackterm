@@ -1001,6 +1001,10 @@ pub fn status_bar(
             format!("◌ reconnecting in {in_secs}s ({reason})"),
             Style::new().fg(theme.accent),
         )],
+        Connection::SessionExpired => vec![Span::styled(
+            "✕ session expired: quit and run `slackterm login`",
+            Style::new().fg(theme.unread).bold(),
+        )],
     };
     let connection_width: usize = connection.iter().map(|s| s.content.width()).sum();
     let room = (area.width as usize).saturating_sub(left_width + connection_width + 3);

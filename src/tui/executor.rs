@@ -53,26 +53,46 @@ pub fn execute(command: Command, client: &SlackClient, events: &UnboundedSender<
         let event = match result {
             Ok(Some(event)) => event,
             Ok(None) => return,
-            Err(reason) => ApiEvent::Failed(reason),
+            Err(Failure::SessionExpired) => ApiEvent::SessionExpired,
+            Err(Failure::Other(reason)) => ApiEvent::Failed(reason),
         };
         let _ = events.send(Event::Api(event));
     });
 }
 
-async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>, String> {
+/// Why a command failed. An expired session makes every command fail, and
+/// is told once rather than as one error each.
+enum Failure {
+    SessionExpired,
+    Other(String),
+}
+
+/// Turns an error of the Slack API into a failure, naming what failed.
+fn failed(what: &'static str) -> impl FnOnce(SlackError) -> Failure {
+    move |e| {
+        if e.is_session_expired() {
+            Failure::SessionExpired
+        } else {
+            Failure::Other(format!("{what}: {e}"))
+        }
+    }
+}
+
+async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>, Failure> {
     let event = match command {
         Command::LoadUsers => client
             .users_list()
             .await
             .map(ApiEvent::Users)
-            .map_err(|e| format!("users: {e}"))?,
+            .map_err(failed("users"))?,
         Command::LoadConversations => client
             .user_conversations()
             .await
             .map(ApiEvent::Conversations)
-            .map_err(|e| format!("channel list: {e}"))?,
+            .map_err(failed("channel list"))?,
         Command::LoadCounts => match client.client_counts().await {
             Ok(counts) => ApiEvent::Counts(counts),
+            Err(e) if e.is_session_expired() => return Err(Failure::SessionExpired),
             Err(_) => ApiEvent::CountsUnavailable,
         },
         Command::LoadHistory(channel) => client
@@ -83,7 +103,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 messages: page.messages,
                 has_more: page.has_more,
             })
-            .map_err(|e| format!("history: {e}"))?,
+            .map_err(failed("history"))?,
         Command::LoadOlder { channel, before } => client
             .conversations_history(&channel, Some(&before), 200)
             .await
@@ -92,17 +112,17 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 messages: page.messages,
                 has_more: page.has_more,
             })
-            .map_err(|e| format!("history: {e}"))?,
+            .map_err(failed("history"))?,
         // The default sections stay if the user's cannot be read.
         Command::LoadSections => match client.channel_sections().await {
             Ok(sections) => ApiEvent::Sections(sections),
             Err(_) => return Ok(None),
         },
         Command::Search(query) => {
-            let result = client
-                .search_messages(&query)
-                .await
-                .map_err(|e| e.to_string());
+            let result = match client.search_messages(&query).await {
+                Err(e) if e.is_session_expired() => return Err(Failure::SessionExpired),
+                result => result.map_err(|e| e.to_string()),
+            };
             ApiEvent::SearchResults { query, result }
         }
         Command::LoadReplies { channel, ts } => client
@@ -113,7 +133,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 ts,
                 messages,
             })
-            .map_err(|e| format!("thread: {e}"))?,
+            .map_err(failed("thread"))?,
         Command::Send {
             channel,
             text,
@@ -122,12 +142,12 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .chat_post_message(&channel, &text, thread_ts.as_deref())
             .await
             .map(|message| ApiEvent::Sent { channel, message })
-            .map_err(|e| format!("send: {e}"))?,
+            .map_err(failed("send"))?,
         Command::MarkRead { channel, ts } => {
             client
                 .conversations_mark(&channel, &ts)
                 .await
-                .map_err(|e| format!("mark as read: {e}"))?;
+                .map_err(failed("mark as read"))?;
             return Ok(None);
         }
         // Several events each: answered in `execute`.
@@ -162,6 +182,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 {
                     return Ok(None);
                 }
+                Err(e) if e.is_session_expired() => return Err(Failure::SessionExpired),
                 Err(e) => ApiEvent::ReactionFailed {
                     channel,
                     ts,
@@ -174,11 +195,13 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
         Command::SaveSidebar(state) => {
             state
                 .save()
-                .map_err(|e| format!("sidebar: {e:#}"))?;
+                .map_err(|e| Failure::Other(format!("sidebar: {e:#}")))?;
             return Ok(None);
         }
         Command::SaveSettings { settings, path } => {
-            settings.save(&path).map_err(|e| format!("settings: {e:#}"))?;
+            settings
+                .save(&path)
+                .map_err(|e| Failure::Other(format!("settings: {e:#}")))?;
             return Ok(None);
         }
     };
@@ -362,6 +385,16 @@ fn file_name(id: &str, name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tells_an_expired_session_apart() {
+        let expired = failed("users")(SlackError::Api("invalid_auth".into()));
+        assert!(matches!(expired, Failure::SessionExpired));
+        let other = failed("users")(SlackError::Api("ratelimited".into()));
+        assert!(
+            matches!(other, Failure::Other(m) if m == "users: Slack rejected the request: ratelimited")
+        );
+    }
 
     #[test]
     fn names_cached_files_safely() {
