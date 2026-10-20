@@ -368,6 +368,7 @@ fn result_lines(
             mrkdwn::Kind::Code => normal.bg(theme.panel),
             _ => Style::new().fg(theme.link),
         };
+        let base = super::widgets::dress(base, segment.emphasis);
         let mut current = String::new();
         for c in segment.text.chars() {
             match c {

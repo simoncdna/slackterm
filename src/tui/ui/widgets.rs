@@ -204,6 +204,7 @@ impl MessagePiece<'_> {
             .into_iter()
             .map(|segment| {
                 let style = match segment.kind {
+                    Kind::Text if segment.emphasis.quote => muted,
                     Kind::Text => base,
                     Kind::Mention { me: true } => Style::new().fg(theme.accent).bold(),
                     Kind::Mention { me: false } => Style::new().fg(theme.link).bold(),
@@ -212,7 +213,7 @@ impl MessagePiece<'_> {
                     Kind::Code => Style::new().fg(theme.fg).bg(theme.panel),
                     Kind::Emoji => muted,
                 };
-                (segment.text, style)
+                (segment.text, dress(style, segment.emphasis))
             })
             .collect();
         for file in &self.message.files {
@@ -480,6 +481,21 @@ fn file_label(file: &File) -> String {
         label.push_str(&detail);
     }
     label
+}
+
+/// Adds `*bold*`, `_italic_` and `~strike~` to a segment's style.
+pub fn dress(style: Style, emphasis: mrkdwn::Emphasis) -> Style {
+    let mut style = style;
+    if emphasis.bold {
+        style = style.bold();
+    }
+    if emphasis.italic {
+        style = style.italic();
+    }
+    if emphasis.strike {
+        style = style.crossed_out();
+    }
+    style
 }
 
 /// At most 36 columns wide and 12 rows tall, keeping the picture's shape
