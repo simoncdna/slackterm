@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 
 use slackterm::commands::{self, LoginOptions};
 use slackterm::slack::DEFAULT_API_BASE;
-use slackterm::store::{KeyringStore, SessionStore};
+use slackterm::store::{SessionStore, SystemStore};
 
 #[derive(Parser)]
 #[command(
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
 async fn run() -> Result<()> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let cli = Cli::parse();
-    let store = KeyringStore;
+    let store = SystemStore::new()?;
 
     let Some(command) = cli.command else {
         return match store.load()? {

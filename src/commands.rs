@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 use crate::auth::{browser, manual};
 use crate::session::{RawCredentials, Session, Workspace, normalize_cookie_d};
 use crate::slack::{SlackClient, SlackError};
-use crate::store::SessionStore;
+use crate::store::{Saved, SessionStore};
 
 pub struct LoginOptions {
     pub manual: bool,
@@ -22,9 +22,7 @@ pub async fn login(store: &dyn SessionStore, api_base: &str, options: LoginOptio
     };
 
     let (session, rejected) = verify(api_base, raw).await?;
-    store
-        .save(&session)
-        .context("could not save the session to the system keychain")?;
+    let saved = store.save(&session).context("could not save the session")?;
 
     for error in rejected {
         eprintln!("⚠ skipped workspace: {error}");
@@ -35,7 +33,17 @@ pub async fn login(store: &dyn SessionStore, api_base: &str, options: LoginOptio
             workspace.user_name, workspace.team_name
         );
     }
-    println!("  Credentials saved to the system keychain.");
+    match saved {
+        Saved::Keychain => println!("  Credentials saved to the system keychain."),
+        Saved::File {
+            path,
+            keychain_error,
+        } => println!(
+            "  No system keychain ({keychain_error}): credentials saved to {}, \
+             readable only by you.",
+            path.display()
+        ),
+    }
     Ok(())
 }
 
@@ -93,7 +101,7 @@ pub async fn verify(api_base: &str, raw: RawCredentials) -> Result<(Session, Vec
 
 pub fn logout(store: &dyn SessionStore) -> Result<()> {
     if store.clear()? {
-        println!("Credentials deleted from the system keychain.");
+        println!("Credentials deleted.");
     } else {
         println!("No saved credentials.");
     }

@@ -108,7 +108,7 @@ slackterm login
 
 slackterm opens Chrome (or Chromium, Brave, Edge) in a dedicated profile: you sign in to your workspace as usual, and it picks up the web session (the `xoxc` token and the `d` cookie). Nothing to create on the Slack side, no app for an admin to approve. The profile is kept, so an expired session usually renews in one click.
 
-Credentials are stored in the system keychain (Keychain on macOS), never in plain text on disk.
+Credentials are stored in the system keychain: Keychain on macOS, Credential Manager on Windows, Secret Service (GNOME Keyring, KWallet) on Linux. Where there is none — an SSH session, WSL, a window manager without a keyring — they go to a `session.json` file that only you can read, in the data directory (`~/.local/share/slackterm/` on Linux), and `login` tells you so.
 
 ```sh
 slackterm              # open the interface
@@ -161,7 +161,7 @@ slackterm logout       # delete the credentials
 | `t` | Open the message's thread |
 | `r` | React to the message (in threads too) |
 | `o` | Open the message's files |
-| `p` | Play the message's video in the terminal (needs [mpv](https://mpv.io)) |
+| `p` | Play the message's video in the terminal (needs [mpv](https://mpv.io), and [yt-dlp](https://github.com/yt-dlp/yt-dlp) for links) |
 | `i`, `a` or `Enter` | Write |
 | `Esc` | Deselect, close the thread |
 
@@ -178,7 +178,7 @@ slackterm logout       # delete the credentials
 
 ## Configuration
 
-Settings changed with `,` are saved to `config.toml` (`~/Library/Application Support/slackterm/` on macOS, `~/.config/slackterm/` on Linux). You can also write it by hand:
+Settings changed with `,` are saved to `config.toml` (`~/Library/Application Support/slackterm/` on macOS, `~/.config/slackterm/` on Linux, `%APPDATA%\slackterm\config\` on Windows). You can also write it by hand:
 
 ```toml
 layout = "panels"   # panels | stream | focus

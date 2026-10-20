@@ -182,9 +182,9 @@ async fn play(
     screen: &mut Screen<'_>,
     terminal_events: &TerminalEvents,
 ) -> Result<(), String> {
-    let mpv = executor::in_path("mpv")
+    let mpv = crate::platform::find_program("mpv")
         .ok_or("to play videos in the terminal, install mpv: https://mpv.io")?;
-    if player::is_link(target) && executor::in_path("yt-dlp").is_none() {
+    if player::is_link(target) && crate::platform::find_program("yt-dlp").is_none() {
         return Err("to play video links, install yt-dlp: https://github.com/yt-dlp/yt-dlp".into());
     }
     let term = std::env::var("TERM").unwrap_or_default();

@@ -20,36 +20,66 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
 /// (on macOS the process keeps running after its last window is closed).
 const MAX_POLLS_WITHOUT_PAGE: u32 = 3;
 
-#[cfg(target_os = "macos")]
-const CANDIDATES: &[&str] = &[
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-];
-
-#[cfg(not(target_os = "macos"))]
-const CANDIDATES: &[&str] = &[
-    "google-chrome",
-    "google-chrome-stable",
-    "chromium",
-    "chromium-browser",
-    "brave-browser",
-    "microsoft-edge",
-];
-
 pub fn find_browser() -> Option<PathBuf> {
-    CANDIDATES.iter().find_map(|candidate| resolve(candidate))
+    candidates().into_iter().find(|path| path.is_file())
 }
 
-fn resolve(candidate: &str) -> Option<PathBuf> {
-    let path = Path::new(candidate);
-    if path.is_absolute() {
-        return path.is_file().then(|| path.to_path_buf());
-    }
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|dir| dir.join(candidate))
-        .find(|path| path.is_file())
+/// Where Chromium-based browsers are installed, Chrome first.
+#[cfg(target_os = "macos")]
+fn candidates() -> Vec<PathBuf> {
+    const APPS: &[&str] = &[
+        "Google Chrome",
+        "Chromium",
+        "Brave Browser",
+        "Microsoft Edge",
+    ];
+    let mut roots = vec![PathBuf::from("/Applications")];
+    roots.extend(std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Applications")));
+    roots
+        .iter()
+        .flat_map(|root| {
+            APPS.iter()
+                .map(move |app| root.join(format!("{app}.app/Contents/MacOS/{app}")))
+        })
+        .collect()
+}
+
+/// Where Chromium-based browsers are installed, Chrome first. Edge ships
+/// with Windows, so there is always one.
+#[cfg(windows)]
+fn candidates() -> Vec<PathBuf> {
+    const EXECUTABLES: &[&str] = &[
+        r"Google\Chrome\Application\chrome.exe",
+        r"Chromium\Application\chrome.exe",
+        r"BraveSoftware\Brave-Browser\Application\brave.exe",
+        r"Microsoft\Edge\Application\msedge.exe",
+    ];
+    let roots: Vec<PathBuf> = ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .collect();
+    EXECUTABLES
+        .iter()
+        .flat_map(|executable| roots.iter().map(move |root| root.join(executable)))
+        .collect()
+}
+
+/// Chromium-based browsers in the `PATH`, Chrome first.
+#[cfg(not(any(target_os = "macos", windows)))]
+fn candidates() -> Vec<PathBuf> {
+    [
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "brave-browser",
+        "microsoft-edge",
+        "microsoft-edge-stable",
+    ]
+    .into_iter()
+    .filter_map(crate::platform::find_program)
+    .collect()
 }
 
 struct DevTools {

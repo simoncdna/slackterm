@@ -1,10 +1,10 @@
-use std::ffi::OsString;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use futures_util::{StreamExt, stream};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::platform::find_program;
 use crate::slack::{SlackClient, SlackError, is_slack_file_url};
 
 use super::update::{ApiEvent, Command, Event, FileToOpen};
@@ -269,15 +269,18 @@ async fn open_file(
     events: &UnboundedSender<Event>,
 ) -> Result<(), String> {
     let path = cached_file(client, file, events).await?;
-    let (program, args) = opener(&path, file.video, in_path("mpv").is_some());
-    std::process::Command::new(program)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("could not launch {program}: {e}"))?;
-    Ok(())
+    let opened = match file.video.then(|| find_program("mpv")).flatten() {
+        Some(mpv) => std::process::Command::new(mpv)
+            .arg("--force-window=immediate")
+            .arg(&path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|_| ()),
+        None => open::that_detached(&path),
+    };
+    opened.map_err(|e| format!("could not open {}: {e}", file.name))
 }
 
 /// The file's path in the cache, downloading it the first time.
@@ -304,19 +307,7 @@ fn open_url(url: &str) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
         return Err(format!("ignored a non-web link: {url}"));
     }
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program)
-        .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("could not open the link: {e}"))
+    open::that_detached(url).map_err(|e| format!("could not open the link: {e}"))
 }
 
 async fn download(
@@ -368,25 +359,6 @@ fn file_name(id: &str, name: &str) -> String {
     format!("{id}-{}", clean.trim_start_matches('.'))
 }
 
-fn opener(path: &Path, video: bool, mpv: bool) -> (&'static str, Vec<OsString>) {
-    let path = path.as_os_str().to_owned();
-    if video && mpv {
-        return ("mpv", vec!["--force-window=immediate".into(), path]);
-    }
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    (program, vec![path])
-}
-
-pub(super) fn in_path(program: &str) -> Option<PathBuf> {
-    std::env::split_paths(&std::env::var_os("PATH")?)
-        .map(|dir| dir.join(program))
-        .find(|path| path.is_file())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -396,13 +368,5 @@ mod tests {
         assert_eq!(file_name("F1", "final report.pdf"), "F1-final report.pdf");
         assert_eq!(file_name("F2", "../../etc/passwd"), "F2-_.._etc_passwd");
         assert_eq!(file_name("F3", "a:b"), "F3-a_b");
-    }
-
-    #[test]
-    fn plays_videos_in_mpv_when_installed() {
-        let path = Path::new("/cache/F1-demo.mp4");
-        assert_eq!(opener(path, true, true).0, "mpv");
-        assert_ne!(opener(path, true, false).0, "mpv");
-        assert_ne!(opener(path, false, true).0, "mpv");
     }
 }
