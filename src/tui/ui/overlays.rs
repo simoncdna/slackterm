@@ -9,10 +9,11 @@ use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph};
 use crate::config::{AvatarStyle, Choice, Settings};
 use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::input::Input;
+use crate::tui::keymap::{ACTIONS, Scope};
 use crate::tui::state::{App, EmojiPicker, Search, SearchStatus};
 use crate::tui::theme::Theme;
 
-use super::text::{Styled, local_time, short_datetime, truncate, truncate_styled};
+use super::text::{Styled, align_left, local_time, short_datetime, truncate, truncate_styled};
 
 fn popup(frame: &mut Frame, area: Rect, theme: &Theme, title: &str, right: String) -> Rect {
     frame.render_widget(Clear, area);
@@ -495,4 +496,94 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
         )),
         hint_area,
     );
+}
+
+/// Every key: the keymap's, then the ones that never change.
+pub fn help(frame: &mut Frame, app: &App, theme: &Theme, scroll: usize) {
+    let lines = help_lines(app, theme);
+    let screen = frame.area();
+    let width = screen.width.saturating_sub(4).min(72);
+    let height = (lines.len() as u16 + 3).min(screen.height.saturating_sub(2));
+    let area = Rect {
+        x: screen.x + (screen.width - width) / 2,
+        y: screen.y + (screen.height - height) / 2,
+        width,
+        height,
+    };
+    let inner = popup(
+        frame,
+        area,
+        theme,
+        "keys",
+        "change them in [keys] of config.toml".into(),
+    );
+    let [list_area, hint_area] =
+        Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(inner);
+    let max = lines.len().saturating_sub(list_area.height as usize);
+    app.help_max_scroll.set(max);
+    let visible: Vec<Line> = lines.into_iter().skip(scroll.min(max)).collect();
+    frame.render_widget(Paragraph::new(visible), list_area);
+    frame.render_widget(
+        Paragraph::new(hint_line(theme, &[("j/k", "scroll"), ("esc", "close")])),
+        hint_area,
+    );
+}
+
+/// Keys of the message box, which the keymap leaves alone so that typing
+/// stays typing.
+const WRITING: &[(&str, &str)] = &[
+    ("⏎", "Send"),
+    ("⇧⏎ alt+⏎ ^j", "New line"),
+    ("^a ^e", "Start / end of the line"),
+    ("^w alt+⌫", "Delete the previous word"),
+    ("^u", "Clear the message"),
+    ("esc", "Back to normal mode"),
+];
+
+fn help_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
+    const KEYS: usize = 16;
+    let heading =
+        |title: &str| Line::styled(title.to_string(), Style::new().fg(theme.accent).bold());
+    let row = |keys: &str, label: &str| {
+        Line::from(vec![
+            Span::styled(
+                format!("  {}", align_left(keys, KEYS)),
+                Style::new().fg(theme.fg),
+            ),
+            Span::styled(label.to_string(), Style::new().fg(theme.muted)),
+        ])
+    };
+    let mut lines = Vec::new();
+    let scopes = [
+        (Scope::Anywhere, "Anywhere"),
+        (Scope::Lists, "Sidebar, messages and thread"),
+        (Scope::Message, "On a message"),
+    ];
+    for (scope, title) in scopes {
+        lines.push(heading(title));
+        for definition in ACTIONS.iter().filter(|d| d.scope == scope) {
+            let keys: Vec<String> = app
+                .keymap
+                .keys(definition.action)
+                .iter()
+                .map(ToString::to_string)
+                .collect();
+            let keys = if keys.is_empty() {
+                "—".to_string()
+            } else {
+                keys.join(" ")
+            };
+            lines.push(row(&keys, definition.help));
+        }
+        lines.push(Line::default());
+    }
+    lines.push(heading("While writing"));
+    for (keys, label) in WRITING {
+        lines.push(row(keys, label));
+    }
+    lines.push(Line::default());
+    lines.push(heading("Always"));
+    lines.push(row("^c", "Quit"));
+    lines.push(row("esc", "Close the thread or the popup, deselect"));
+    lines
 }

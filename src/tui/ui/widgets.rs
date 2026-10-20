@@ -14,6 +14,7 @@ use crate::config::SidebarTab;
 use crate::slack::mrkdwn::{self, Kind};
 use crate::slack::{File, FileKind, Message};
 use crate::slack::{emoji, media};
+use crate::tui::keymap::Action;
 use crate::tui::pictures::{AVATAR_SIZE, Pictures};
 use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow};
 use crate::tui::theme::Theme;
@@ -1036,38 +1037,46 @@ pub fn status_bar(
     frame.render_widget(Paragraph::new(Line::from(right)).style(style), right_area);
 }
 
-fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
+/// The keys that matter where the user is, as the keymap has them.
+fn hints(app: &App) -> Vec<(String, &'static str)> {
     if app.mode == Mode::Insert {
-        return vec![("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")];
+        return [("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")]
+            .map(|(key, label)| (key.to_string(), label))
+            .into();
     }
+    let keys = &app.keymap;
     let mut hints = match app.focus {
         Focus::Sidebar => vec![
-            ("j/k", "move"),
-            ("⏎", "open / fold"),
-            ("←→", "channels / DMs"),
+            (keys.pair(Action::Down, Action::Up), "move"),
+            (keys.hint(Action::Open), "open / fold"),
+            (keys.pair(Action::Left, Action::Right), "channels / DMs"),
         ],
         Focus::Messages => vec![
-            ("j/k", "select"),
-            ("r", "react"),
-            ("o", "open"),
-            ("p", "play"),
-            ("t", "thread"),
-            ("i", "write"),
+            (keys.pair(Action::Down, Action::Up), "select"),
+            (keys.hint(Action::React), "react"),
+            (keys.hint(Action::OpenFiles), "open"),
+            (keys.hint(Action::Play), "play"),
+            (keys.hint(Action::Thread), "thread"),
+            (keys.hint(Action::Write), "write"),
         ],
         Focus::Thread => vec![
-            ("j/k", "select"),
-            ("r", "react"),
-            ("o", "open"),
-            ("p", "play"),
-            ("i", "reply"),
-            ("esc", "close thread"),
+            (keys.pair(Action::Down, Action::Up), "select"),
+            (keys.hint(Action::React), "react"),
+            (keys.hint(Action::OpenFiles), "open"),
+            (keys.hint(Action::Play), "play"),
+            (keys.hint(Action::Write), "reply"),
+            (Some("esc".to_string()), "close thread"),
         ],
     };
     hints.extend([
-        ("^k", "go to"),
-        ("/", "search"),
-        (",", "settings"),
-        ("q", "quit"),
+        (keys.hint(Action::GoTo), "go to"),
+        (keys.hint(Action::Search), "search"),
+        (keys.hint(Action::Settings), "settings"),
+        (keys.hint(Action::Help), "help"),
+        (keys.hint(Action::Quit), "quit"),
     ]);
     hints
+        .into_iter()
+        .filter_map(|(key, label)| Some((key?, label)))
+        .collect()
 }

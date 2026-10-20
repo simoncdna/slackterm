@@ -177,8 +177,8 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 .map_err(|e| format!("sidebar: {e:#}"))?;
             return Ok(None);
         }
-        Command::SaveSettings(settings) => {
-            settings.save().map_err(|e| format!("settings: {e:#}"))?;
+        Command::SaveSettings { settings, path } => {
+            settings.save(&path).map_err(|e| format!("settings: {e:#}"))?;
             return Ok(None);
         }
     };

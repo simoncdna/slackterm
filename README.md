@@ -151,12 +151,13 @@ slackterm logout       # delete the credentials
 
 ## Keys
 
-`,` shows the settings, and the status bar always lists the keys that matter where you are.
+`?` lists every key, the status bar always shows the ones that matter where you are, and all of them can be [changed](#keys-1).
 
 **Everywhere**
 
 | Key | Action |
 |---|---|
+| `?` | All the keys |
 | `Ctrl+K` | Go to a channel or a person |
 | `/` or `Ctrl+F` | Search messages |
 | `,` | Settings (layout, theme, accent, avatars, clock) |
@@ -200,7 +201,24 @@ slackterm logout       # delete the credentials
 
 ## Configuration
 
-Settings changed with `,` are saved to `config.toml` (`~/Library/Application Support/slackterm/` on macOS, `~/.config/slackterm/` on Linux, `%APPDATA%\slackterm\config\` on Windows). You can also write it by hand:
+```sh
+slackterm config             # open the config file in $VISUAL or $EDITOR
+slackterm config --default   # print every option with its default value
+slackterm config --path      # print where the file is
+```
+
+The first `slackterm config` creates the file with every option commented out, and once you close your editor it checks what you wrote. The file is `config.toml` in:
+
+- `~/.config/slackterm/` on Linux, and on macOS if you create it there;
+- `~/Library/Application Support/slackterm/` on macOS otherwise;
+- `%APPDATA%\slackterm\config\` on Windows;
+- `$XDG_CONFIG_HOME/slackterm/` wherever that variable is set.
+
+`--config <PATH>` uses another file.
+
+### Settings
+
+The settings screen (`,`) changes these live and writes them to the file, keeping your comments and the rest of it.
 
 ```toml
 layout = "panels"   # panels | stream | focus
@@ -209,6 +227,33 @@ accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
 clock = "24h"       # 24h | 12h
 ```
+
+### Keys
+
+Every key of normal mode can be changed in `[keys]`, by action: give one key, a list, or `[]` for none. The status bar, the help (`?`) and the hints in the message box follow your keys, and a key given to two actions is reported when slackterm starts.
+
+```toml
+[keys]
+react = "e"
+search = ["/", "ctrl+s"]
+down = ["j", "ctrl+n", "down"]
+up = ["k", "ctrl+p", "up"]
+play = []
+```
+
+A key is a character (`"q"`, `"G"`, `"?"`) or a name: `enter`, `esc`, `tab`, `space`, `backspace`, `delete`, `up`, `down`, `left`, `right`, `home`, `end`, `pageup`, `pagedown`, `f1` to `f12`; put `ctrl+`, `alt+` or `shift+` in front for combinations. `slackterm config --default` lists every action with its keys. The keys of the message box (`Enter` to send, `Ctrl+W`…) stay as they are.
+
+### Colors
+
+`[colors]` replaces any color of the theme, with `"#rrggbb"`, a terminal color name such as `"red"`, a palette index such as `"42"`, or `"reset"` for the terminal's own color.
+
+```toml
+[colors]
+accent = "#88c0d0"
+bg = "reset"        # the terminal's background, transparency included
+```
+
+`slackterm config --default` lists them all: background, text, borders, links, unread counts, and the colors given to people.
 
 Folded sections and the open tab are remembered separately, in `sidebar.toml`.
 

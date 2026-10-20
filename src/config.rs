@@ -1,8 +1,13 @@
-use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use ratatui::style::Color;
+use serde::{Deserialize, Deserializer, Serialize};
+use toml_edit::{DocumentMut, Item};
+
+const FILE: &str = "config.toml";
 
 /// A setting with a fixed list of values the settings screen cycles through.
 pub trait Choice: Copy + PartialEq + 'static {
@@ -154,16 +159,81 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn path() -> Result<PathBuf> {
-        let dirs = directories::ProjectDirs::from("", "", "slackterm")
-            .context("could not find the config directory")?;
-        Ok(dirs.config_dir().join("config.toml"))
+    /// Writes the settings into the config file, keeping everything else in
+    /// it: comments, keys and colors.
+    pub fn save(&self, path: &Path) -> Result<()> {
+        let contents = match std::fs::read_to_string(path) {
+            Ok(contents) => contents,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e).with_context(|| format!("could not read {}", path.display())),
+        };
+        let updated = self
+            .write_into(&contents)
+            .with_context(|| format!("{} is invalid", path.display()))?;
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(path, updated).with_context(|| format!("could not write {}", path.display()))
     }
 
+    fn write_into(&self, contents: &str) -> Result<String> {
+        let mut document: DocumentMut = contents.parse()?;
+        let settings: DocumentMut = toml::to_string(self)?.parse()?;
+        for (key, item) in settings.iter() {
+            let Some(value) = item.as_value() else {
+                continue;
+            };
+            match document.get_mut(key).and_then(Item::as_value_mut) {
+                // Keep the comment written after the old value.
+                Some(old) => {
+                    let decor = old.decor().clone();
+                    *old = value.clone();
+                    *old.decor_mut() = decor;
+                }
+                None => {
+                    document.insert(key, Item::Value(value.clone()));
+                }
+            }
+        }
+        Ok(document.to_string())
+    }
+}
+
+/// Everything the config file holds.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Config {
+    /// What the settings screen changes.
+    pub settings: Settings,
+    /// Keys by action name, as written: the interface checks them.
+    pub keys: BTreeMap<String, KeyList>,
+    pub colors: Colors,
+}
+
+/// The file as written. Unknown keys are refused, so that a typo does not
+/// go unnoticed.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct File {
+    #[serde(default)]
+    layout: Layout,
+    #[serde(default)]
+    theme: ThemeName,
+    #[serde(default)]
+    accent: Accent,
+    #[serde(default)]
+    avatars: AvatarStyle,
+    #[serde(default)]
+    clock: Clock,
+    #[serde(default)]
+    keys: BTreeMap<String, KeyList>,
+    #[serde(default)]
+    colors: Colors,
+}
+
+impl Config {
     /// Missing file means defaults; a file that cannot be read is an error.
-    pub fn load() -> Result<Self> {
-        let path = Self::path()?;
-        match std::fs::read_to_string(&path) {
+    pub fn load(path: &Path) -> Result<Self> {
+        match std::fs::read_to_string(path) {
             Ok(contents) => {
                 Self::from_toml(&contents).with_context(|| format!("{} is invalid", path.display()))
             }
@@ -172,21 +242,98 @@ impl Settings {
         }
     }
 
-    pub fn save(&self) -> Result<()> {
-        let path = Self::path()?;
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
+    pub fn from_toml(contents: &str) -> Result<Self> {
+        let file: File = toml::from_str(contents)?;
+        Ok(Self {
+            settings: Settings {
+                layout: file.layout,
+                theme: file.theme,
+                accent: file.accent,
+                avatars: file.avatars,
+                clock: file.clock,
+            },
+            keys: file.keys,
+            colors: file.colors,
+        })
+    }
+}
+
+/// Where the config file is: the one given with `--config`, else in
+/// `$XDG_CONFIG_HOME`, else in `~/.config` on macOS if there is one there,
+/// else in the system's config directory.
+pub fn config_path(chosen: Option<PathBuf>) -> Result<PathBuf> {
+    if let Some(path) = chosen {
+        return Ok(path);
+    }
+    if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME").filter(|dir| !dir.is_empty()) {
+        return Ok(PathBuf::from(dir).join("slackterm").join(FILE));
+    }
+    if cfg!(target_os = "macos")
+        && let Some(home) = std::env::var_os("HOME")
+    {
+        let path = PathBuf::from(home).join(".config/slackterm").join(FILE);
+        if path.exists() {
+            return Ok(path);
         }
-        std::fs::write(&path, self.to_toml()?)
-            .with_context(|| format!("could not write {}", path.display()))
     }
+    let dirs = directories::ProjectDirs::from("", "", "slackterm")
+        .context("could not find the config directory")?;
+    Ok(dirs.config_dir().join(FILE))
+}
 
-    fn from_toml(contents: &str) -> Result<Self> {
-        Ok(toml::from_str(contents)?)
+/// The keys of an action: one key, or a list.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(from = "OneOrMany")]
+pub struct KeyList(pub Vec<String>);
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl From<OneOrMany> for KeyList {
+    fn from(keys: OneOrMany) -> Self {
+        match keys {
+            OneOrMany::One(key) => Self(vec![key]),
+            OneOrMany::Many(keys) => Self(keys),
+        }
     }
+}
 
-    fn to_toml(self) -> Result<String> {
-        Ok(toml::to_string(&self)?)
+/// Colors that replace the theme's own.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Colors {
+    pub bg: Option<ColorValue>,
+    pub surface: Option<ColorValue>,
+    pub panel: Option<ColorValue>,
+    pub border: Option<ColorValue>,
+    pub fg: Option<ColorValue>,
+    pub muted: Option<ColorValue>,
+    pub accent: Option<ColorValue>,
+    pub on_accent: Option<ColorValue>,
+    pub unread: Option<ColorValue>,
+    pub link: Option<ColorValue>,
+    pub success: Option<ColorValue>,
+    pub nicks: Option<[ColorValue; 5]>,
+}
+
+/// `#rrggbb`, an ANSI color name such as `red`, a palette index such as
+/// `42`, or `reset` for the terminal's own color.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ColorValue(pub Color);
+
+impl<'de> Deserialize<'de> for ColorValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Color::from_str(&text).map(Self).map_err(|_| {
+            serde::de::Error::custom(format!(
+                "unknown color `{text}`: use \"#rrggbb\", a name such as \"red\", \
+                 a palette index or \"reset\""
+            ))
+        })
     }
 }
 
@@ -249,24 +396,75 @@ mod tests {
             avatars: AvatarStyle::Initials,
             clock: Clock::TwelveHour,
         };
-        let toml = settings.to_toml().unwrap();
+        let toml = settings.write_into("").unwrap();
         assert!(toml.contains("layout = \"stream\""));
         assert!(toml.contains("clock = \"12h\""));
-        assert_eq!(Settings::from_toml(&toml).unwrap(), settings);
+        assert_eq!(Config::from_toml(&toml).unwrap().settings, settings);
     }
 
     #[test]
     fn missing_keys_fall_back_to_defaults() {
-        let settings = Settings::from_toml("theme = \"nord\"").unwrap();
-        assert_eq!(settings.theme, ThemeName::Nord);
-        assert_eq!(settings.layout, Layout::Panels);
+        let config = Config::from_toml("theme = \"nord\"").unwrap();
+        assert_eq!(config.settings.theme, ThemeName::Nord);
+        assert_eq!(config.settings.layout, Layout::Panels);
     }
 
     #[test]
     fn reads_the_french_names_of_earlier_versions() {
-        let settings = Settings::from_toml("theme = \"clair\"\naccent = \"vert\"").unwrap();
-        assert_eq!(settings.theme, ThemeName::Light);
-        assert_eq!(settings.accent, Accent::Green);
+        let config = Config::from_toml("theme = \"clair\"\naccent = \"vert\"").unwrap();
+        assert_eq!(config.settings.theme, ThemeName::Light);
+        assert_eq!(config.settings.accent, Accent::Green);
+    }
+
+    #[test]
+    fn refuses_unknown_options_with_their_line() {
+        let error = Config::from_toml("theme = \"nord\"\nlyout = \"stream\"").unwrap_err();
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("lyout") && message.contains("line 2"),
+            "{message}"
+        );
+        assert!(Config::from_toml("[colors]\nbackground = \"red\"").is_err());
+    }
+
+    #[test]
+    fn reads_keys_and_colors() {
+        let config = Config::from_toml(
+            "[keys]\nreact = \"e\"\nsearch = [\"/\", \"ctrl+s\"]\n\
+             [colors]\naccent = \"#88C0D0\"\nbg = \"reset\"\nunread = \"red\"",
+        )
+        .unwrap();
+        assert_eq!(config.keys["react"], KeyList(vec!["e".into()]));
+        assert_eq!(config.keys["search"].0.len(), 2);
+        assert_eq!(
+            config.colors.accent,
+            Some(ColorValue(Color::Rgb(0x88, 0xC0, 0xD0)))
+        );
+        assert_eq!(config.colors.bg, Some(ColorValue(Color::Reset)));
+        assert_eq!(config.colors.unread, Some(ColorValue(Color::Red)));
+        let error = Config::from_toml("[colors]\nfg = \"blu\"").unwrap_err();
+        assert!(format!("{error:#}").contains("unknown color `blu`"));
+    }
+
+    #[test]
+    fn saving_settings_keeps_the_rest_of_the_file() {
+        let written = "# My setup\ntheme = \"nord\" # cold\n\n[keys]\nreact = \"e\"\n";
+        let settings = Settings {
+            theme: ThemeName::Gruvbox,
+            ..Settings::default()
+        };
+
+        let saved = settings.write_into(written).unwrap();
+
+        assert!(
+            saved.starts_with("# My setup\ntheme = \"gruvbox\" # cold\n"),
+            "{saved}"
+        );
+        assert!(saved.contains("[keys]\nreact = \"e\"\n"), "{saved}");
+        let config = Config::from_toml(&saved).unwrap();
+        assert_eq!(config.settings, settings);
+        assert_eq!(config.keys["react"], KeyList(vec!["e".into()]));
+        assert!(settings.write_into("theme = ").is_err());
     }
 
     #[test]

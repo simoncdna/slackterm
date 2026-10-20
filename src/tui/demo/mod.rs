@@ -192,7 +192,7 @@ impl Demo {
             }
             // Run by the event loop, which never hands it to the demo.
             Command::Play(_) => {}
-            Command::MarkRead { .. } | Command::SaveSettings(_) | Command::SaveSidebar(_) => {}
+            Command::MarkRead { .. } | Command::SaveSettings { .. } | Command::SaveSidebar(_) => {}
         }
     }
 

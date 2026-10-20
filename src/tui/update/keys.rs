@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
+use crate::tui::keymap::Action;
 
 pub(super) fn on_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -13,67 +14,76 @@ pub(super) fn on_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     if app.overlay.is_some() {
         return overlays::on_overlay_key(app, key);
     }
-    if ctrl && key.code == KeyCode::Char('k') {
-        open_switcher(app);
-        return Vec::new();
-    }
-    if ctrl && key.code == KeyCode::Char('f') {
-        open_search(app);
-        return Vec::new();
-    }
     match app.mode {
-        Mode::Insert => on_insert_key(app, key),
+        Mode::Insert => match app.keymap.action_while_writing(key) {
+            Some(Action::GoTo) => {
+                open_switcher(app);
+                Vec::new()
+            }
+            Some(Action::Search) => {
+                open_search(app);
+                Vec::new()
+            }
+            _ => on_insert_key(app, key),
+        },
         Mode::Normal => on_normal_key(app, key),
     }
 }
 
 fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
-    match key.code {
-        KeyCode::Char('q') => app.should_quit = true,
-        KeyCode::Char(',') => app.overlay = Some(Overlay::Settings { row: 0 }),
-        KeyCode::Char('/') => open_search(app),
-        KeyCode::Tab => cycle_focus(app, 1),
-        KeyCode::BackTab => cycle_focus(app, -1),
-        KeyCode::Char('1') => focus_sidebar(app),
-        KeyCode::Char('2') => app.focus = Focus::Messages,
-        KeyCode::Char('3') if app.thread.is_some() => app.focus = Focus::Thread,
-        KeyCode::Char('i') | KeyCode::Char('a') if app.current.is_some() => {
+    if key.code == KeyCode::Esc {
+        if app.thread.is_some() {
+            close_thread(app);
+        } else {
+            app.selected = None;
+        }
+        return Vec::new();
+    }
+    let Some(action) = app.keymap.action(app.focus, key) else {
+        return Vec::new();
+    };
+    match action {
+        Action::Quit => app.should_quit = true,
+        Action::GoTo => open_switcher(app),
+        Action::Search => open_search(app),
+        Action::Settings => app.overlay = Some(Overlay::Settings { row: 0 }),
+        Action::Help => app.overlay = Some(Overlay::Help { scroll: 0 }),
+        Action::NextPane => cycle_focus(app, 1),
+        Action::PreviousPane => cycle_focus(app, -1),
+        Action::FocusSidebar => focus_sidebar(app),
+        Action::FocusMessages => app.focus = Focus::Messages,
+        Action::FocusThread if app.thread.is_some() => app.focus = Focus::Thread,
+        Action::Write if app.current.is_some() => {
             if app.focus == Focus::Sidebar {
                 app.focus = Focus::Messages;
             }
             app.mode = Mode::Insert;
         }
-        KeyCode::Esc if app.thread.is_some() => close_thread(app),
-        KeyCode::Esc => app.selected = None,
-        _ => {
+        action => {
             return match app.focus {
-                Focus::Sidebar => on_sidebar_key(app, key),
-                Focus::Messages => on_messages_key(app, key),
-                Focus::Thread => on_thread_key(app, key),
+                Focus::Sidebar => on_sidebar_action(app, action),
+                Focus::Messages => on_messages_action(app, action),
+                Focus::Thread => on_thread_action(app, action),
             };
         }
     }
     Vec::new()
 }
 
-fn on_sidebar_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+fn on_sidebar_action(app: &mut App, action: Action) -> Vec<Command> {
     let items = app.sidebar_items();
     let Some(last) = items.len().checked_sub(1) else {
         return Vec::new();
     };
     let position = app.sidebar_position(&items);
-    let target = match key.code {
-        KeyCode::Char('j') | KeyCode::Down => (position + 1).min(last),
-        KeyCode::Char('k') | KeyCode::Up => position.saturating_sub(1),
-        KeyCode::Char('g') | KeyCode::Home => 0,
-        KeyCode::Char('G') | KeyCode::End => last,
-        KeyCode::Char('h') | KeyCode::Left | KeyCode::Char('[') => {
-            return switch_tab(app, SidebarTab::Channels);
-        }
-        KeyCode::Char('l') | KeyCode::Right | KeyCode::Char(']') => {
-            return switch_tab(app, SidebarTab::Direct);
-        }
-        KeyCode::Enter | KeyCode::Char(' ') => {
+    let target = match action {
+        Action::Down => (position + 1).min(last),
+        Action::Up => position.saturating_sub(1),
+        Action::Top => 0,
+        Action::Bottom => last,
+        Action::Left => return switch_tab(app, SidebarTab::Channels),
+        Action::Right => return switch_tab(app, SidebarTab::Direct),
+        Action::Open => {
             return match &items[position] {
                 SidebarItem::Section(id) => toggle_section(app, id),
                 SidebarItem::Channel(id) => {
@@ -107,48 +117,46 @@ fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
     vec![Command::SaveSidebar(app.sidebar_state())]
 }
 
-fn on_messages_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
     let len = app.current_messages().len();
-    match key.code {
+    match action {
         // Going up from the oldest loaded message fetches older ones.
-        KeyCode::Char('k') | KeyCode::Up | KeyCode::PageUp if app.selected == Some(0) => {
+        Action::Up | Action::PageUp if app.selected == Some(0) => {
             return load_older(app);
         }
-        KeyCode::Char('k') | KeyCode::Up => select_older(app, 1, len),
-        KeyCode::Char('j') | KeyCode::Down => select_newer(app, 1, len),
-        KeyCode::PageUp => select_older(app, PAGE, len),
-        KeyCode::PageDown => select_newer(app, PAGE, len),
-        KeyCode::Char('g') | KeyCode::Home if len > 0 => app.selected = Some(0),
-        KeyCode::Char('G') | KeyCode::End => app.selected = None,
-        KeyCode::Char('t') => return open_thread(app),
-        KeyCode::Char('r') => open_emoji_picker(app),
-        KeyCode::Char('o') => return open_files(app),
-        KeyCode::Char('p') => return play(app),
-        KeyCode::Enter => app.mode = Mode::Insert,
-        KeyCode::Char('h') | KeyCode::Left => focus_sidebar(app),
+        Action::Up => select_older(app, 1, len),
+        Action::Down => select_newer(app, 1, len),
+        Action::PageUp => select_older(app, PAGE, len),
+        Action::PageDown => select_newer(app, PAGE, len),
+        Action::Top if len > 0 => app.selected = Some(0),
+        Action::Bottom => app.selected = None,
+        Action::Thread => return open_thread(app),
+        Action::React => open_emoji_picker(app),
+        Action::OpenFiles => return open_files(app),
+        Action::Play => return play(app),
+        Action::Left => focus_sidebar(app),
         _ => {}
     }
     Vec::new()
 }
 
-fn on_thread_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+fn on_thread_action(app: &mut App, action: Action) -> Vec<Command> {
     let Some(thread) = &mut app.thread else {
         return Vec::new();
     };
     let len = thread.messages.len();
-    match key.code {
-        KeyCode::Enter => app.mode = Mode::Insert,
-        KeyCode::Char('h') | KeyCode::Left => app.focus = Focus::Messages,
-        KeyCode::Char('k') | KeyCode::Up if len > 0 => {
+    match action {
+        Action::Left => app.focus = Focus::Messages,
+        Action::Up if len > 0 => {
             thread.selected = Some(thread.selected.unwrap_or(len).saturating_sub(1));
         }
-        KeyCode::Char('j') | KeyCode::Down => {
+        Action::Down => {
             thread.selected = thread.selected.map(|i| i + 1).filter(|&i| i < len);
         }
-        KeyCode::Char('G') | KeyCode::End => thread.selected = None,
-        KeyCode::Char('r') => open_emoji_picker(app),
-        KeyCode::Char('o') => return open_files(app),
-        KeyCode::Char('p') => return play(app),
+        Action::Bottom => thread.selected = None,
+        Action::React => open_emoji_picker(app),
+        Action::OpenFiles => return open_files(app),
+        Action::Play => return play(app),
         _ => {}
     }
     Vec::new()

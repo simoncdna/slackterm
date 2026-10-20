@@ -2,6 +2,7 @@
 //! run instead of performing them, so it can be tested without Slack.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use crossterm::event::KeyEvent;
 
@@ -111,7 +112,10 @@ pub enum Command {
         channel: String,
         ts: String,
     },
-    SaveSettings(Settings),
+    SaveSettings {
+        settings: Settings,
+        path: PathBuf,
+    },
     SaveSidebar(SidebarState),
     Search(String),
     LoadEmoji,
@@ -218,7 +222,7 @@ fn on_paste(app: &mut App, text: &str) {
         }
         Some(Overlay::Search(search)) => search.query.insert_str(&text.replace('\n', " ")),
         Some(Overlay::Emoji(picker)) => picker.query.insert_str(text.trim()),
-        Some(Overlay::Settings { .. }) => {}
+        Some(Overlay::Settings { .. } | Overlay::Help { .. }) => {}
         None if app.mode == Mode::Insert => app.input.insert_str(&text),
         None => {}
     }

@@ -14,7 +14,7 @@ use super::state::{App, Overlay};
 use super::theme::Theme;
 
 pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
-    let theme = Theme::from_settings(&app.settings);
+    let theme = Theme::new(&app.settings, &app.colors);
     frame.render_widget(
         Block::new().style(Style::new().bg(theme.bg).fg(theme.fg)),
         frame.area(),
@@ -38,6 +38,7 @@ pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
         ),
         Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
         Some(Overlay::Emoji(picker)) => overlays::emoji_picker(frame, app, &theme, picker),
+        Some(Overlay::Help { scroll }) => overlays::help(frame, app, &theme, *scroll),
         None => {}
     }
 }
@@ -252,6 +253,59 @@ mod tests {
         assert!(text.contains("react"), "{text}");
         assert!(text.contains("message from camille"), "{text}");
         assert!(text.contains("👍 :+1:  ✓ already added"), "{text}");
+    }
+
+    fn with_react_on_e(app: &mut App) {
+        let keys = [(
+            "react".to_string(),
+            crate::config::KeyList(vec!["e".into()]),
+        )]
+        .into();
+        app.keymap = crate::tui::keymap::Keymap::new(&keys).0;
+    }
+
+    #[test]
+    fn the_help_lists_the_keys_in_use() {
+        let mut app = sample_app();
+        with_react_on_e(&mut app);
+        app.overlay = Some(Overlay::Help { scroll: 0 });
+
+        let text = screen(&app, 100, 50);
+
+        assert!(text.contains("Anywhere"), "{text}");
+        assert!(
+            text.contains(&format!("{:<16}Go to a channel", "^k")),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("{:<16}React to the message", "e")),
+            "{text}"
+        );
+        assert!(text.contains(&format!("{:<16}Send", "⏎")), "{text}");
+        assert_eq!(app.help_max_scroll.get(), 0);
+    }
+
+    #[test]
+    fn the_help_scrolls_on_short_screens() {
+        let mut app = sample_app();
+        app.overlay = Some(Overlay::Help { scroll: 0 });
+        screen(&app, 100, 20);
+        let max = app.help_max_scroll.get();
+        assert!(max > 0);
+
+        app.overlay = Some(Overlay::Help { scroll: max });
+        let text = screen(&app, 100, 20);
+        assert!(text.contains("Close the thread or the popup"), "{text}");
+    }
+
+    #[test]
+    fn the_status_bar_shows_the_keys_in_use() {
+        let mut app = sample_app();
+        with_react_on_e(&mut app);
+        app.focus = Focus::Messages;
+        let text = screen(&app, 160, 30);
+        assert!(text.contains("e react"), "{text}");
+        assert!(!text.contains("r react"), "{text}");
     }
 
     #[test]

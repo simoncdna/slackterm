@@ -1,7 +1,8 @@
+use std::cell::Cell;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
-use crate::config::{Layout, Settings, SidebarState, SidebarTab};
+use crate::config::{Colors, Layout, Settings, SidebarState, SidebarTab};
 use crate::session::Workspace;
 use crate::slack::{
     ChannelSection, Conversation, ConversationCount, Message, SearchChannel, SearchMatch, User,
@@ -10,6 +11,7 @@ use crate::slack::{
 
 use super::fuzzy::fuzzy_match;
 use super::input::Input;
+use super::keymap::Keymap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelKind {
@@ -284,10 +286,19 @@ const MAX_EMOJI_CHOICES: usize = 60;
 
 #[derive(Debug)]
 pub enum Overlay {
-    Switcher { query: Input, cursor: usize },
-    Settings { row: usize },
+    Switcher {
+        query: Input,
+        cursor: usize,
+    },
+    Settings {
+        row: usize,
+    },
     Search(Search),
     Emoji(EmojiPicker),
+    /// The list of keys, scrolled down by `scroll` rows.
+    Help {
+        scroll: usize,
+    },
 }
 
 pub const SETTINGS_ROWS: usize = 5;
@@ -305,6 +316,11 @@ pub struct App {
     pub settings: Settings,
     /// Where settings changes are saved, if they are.
     pub settings_path: Option<PathBuf>,
+    pub keymap: Keymap,
+    /// Colors of the config file, over the theme's.
+    pub colors: Colors,
+    /// How far the help can scroll, known once it is drawn.
+    pub help_max_scroll: Cell<usize>,
     pub users: HashMap<String, User>,
     pub channels: Vec<Channel>,
     pub channels_loaded: bool,
@@ -357,6 +373,9 @@ impl App {
             my_name: workspace.user_name.clone(),
             settings,
             settings_path: None,
+            keymap: Keymap::default(),
+            colors: Colors::default(),
+            help_max_scroll: Cell::new(0),
             users: HashMap::new(),
             channels: Vec::new(),
             channels_loaded: false,

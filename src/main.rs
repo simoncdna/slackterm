@@ -4,7 +4,8 @@ use std::time::Duration;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use slackterm::commands::{self, LoginOptions};
+use slackterm::commands::{self, ConfigOptions, LoginOptions};
+use slackterm::config::config_path;
 use slackterm::slack::DEFAULT_API_BASE;
 use slackterm::store::{SessionStore, SystemStore};
 
@@ -17,6 +18,9 @@ use slackterm::store::{SessionStore, SystemStore};
 struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
+    /// Config file to use instead of the usual one
+    #[arg(long, global = true, value_name = "PATH")]
+    config: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -39,6 +43,15 @@ enum Command {
     Status,
     /// Try the interface on a made-up workspace, no Slack account needed
     Demo,
+    /// Open the config file in your editor ($VISUAL or $EDITOR)
+    Config {
+        /// Only print where the config file is
+        #[arg(long, conflicts_with = "default")]
+        path: bool,
+        /// Print every option with its default value
+        #[arg(long)]
+        default: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -54,7 +67,7 @@ async fn run() -> Result<()> {
 
     let Some(command) = cli.command else {
         return match store.load()? {
-            Some(session) => slackterm::tui::run(session).await,
+            Some(session) => slackterm::tui::run(session, config_path(cli.config)?).await,
             None => {
                 println!("Not signed in. Run `slackterm login`.");
                 Ok(())
@@ -77,5 +90,8 @@ async fn run() -> Result<()> {
         Command::Logout => commands::logout(&store),
         Command::Status => commands::status(&store, DEFAULT_API_BASE).await,
         Command::Demo => slackterm::tui::run_demo().await,
+        Command::Config { path, default } => {
+            commands::config(&config_path(cli.config)?, ConfigOptions { path, default })
+        }
     }
 }

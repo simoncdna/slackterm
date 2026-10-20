@@ -260,6 +260,8 @@ fn switcher_opens_the_chosen_channel() {
 #[test]
 fn settings_change_live_and_save_on_close() {
     let mut app = loaded_app();
+    let path = std::path::PathBuf::from("/home/alex/.config/slackterm/config.toml");
+    app.settings_path = Some(path.clone());
     update(&mut app, key(KeyCode::Char(',')));
     update(&mut app, key(KeyCode::Char('l')));
     assert_eq!(app.settings.layout, Layout::Stream);
@@ -269,8 +271,44 @@ fn settings_change_live_and_save_on_close() {
     let commands = update(&mut app, key(KeyCode::Esc));
 
     assert!(app.overlay.is_none());
-    assert_eq!(commands, [Command::SaveSettings(app.settings)]);
+    assert_eq!(
+        commands,
+        [Command::SaveSettings {
+            settings: app.settings,
+            path
+        }]
+    );
     assert_ne!(app.settings.theme, Settings::default().theme);
+}
+
+#[test]
+fn settings_without_a_config_file_are_not_saved() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char(',')));
+    update(&mut app, key(KeyCode::Char('l')));
+    let commands = update(&mut app, key(KeyCode::Esc));
+    assert!(commands.is_empty());
+}
+
+#[test]
+fn keys_follow_the_keymap() {
+    let mut app = loaded_app();
+    let mut keys = std::collections::BTreeMap::new();
+    keys.insert("quit".to_string(), crate::config::KeyList(vec!["x".into()]));
+    keys.insert(
+        "help".to_string(),
+        crate::config::KeyList(vec!["f1".into()]),
+    );
+    app.keymap = crate::tui::keymap::Keymap::new(&keys).0;
+
+    update(&mut app, key(KeyCode::Char('q')));
+    assert!(!app.should_quit);
+    update(&mut app, key(KeyCode::F(1)));
+    assert!(matches!(app.overlay, Some(Overlay::Help { .. })));
+    update(&mut app, key(KeyCode::F(1)));
+    assert!(app.overlay.is_none());
+    update(&mut app, key(KeyCode::Char('x')));
+    assert!(app.should_quit);
 }
 
 fn count(id: &str, unread: bool, latest: &str) -> ConversationCount {

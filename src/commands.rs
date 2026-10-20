@@ -1,9 +1,10 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 
 use crate::auth::{browser, manual};
+use crate::config::Config;
 use crate::session::{RawCredentials, Session, Workspace, normalize_cookie_d};
 use crate::slack::{SlackClient, SlackError};
 use crate::store::{Saved, SessionStore};
@@ -126,6 +127,81 @@ pub async fn status(store: &dyn SessionStore, api_base: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+pub struct ConfigOptions {
+    pub path: bool,
+    pub default: bool,
+}
+
+/// Opens the config file in the user's editor, creating it with every
+/// option commented out the first time, then checks what was written.
+pub fn config(path: &Path, options: ConfigOptions) -> Result<()> {
+    if options.path {
+        println!("{}", path.display());
+        return Ok(());
+    }
+    if options.default {
+        print!("{}", crate::tui::default_config());
+        return Ok(());
+    }
+    if !path.exists() {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)
+                .with_context(|| format!("could not create {}", dir.display()))?;
+        }
+        std::fs::write(path, crate::tui::default_config())
+            .with_context(|| format!("could not write {}", path.display()))?;
+        println!(
+            "Created {}, with every option commented out.",
+            path.display()
+        );
+    }
+    let Some(editor) = editor() else {
+        println!(
+            "Edit {} (set $EDITOR to open it from here).",
+            path.display()
+        );
+        return Ok(());
+    };
+    let mut words = editor.split_whitespace();
+    let program = words.next().context("$EDITOR is empty")?;
+    let status = std::process::Command::new(program)
+        .args(words)
+        .arg(path)
+        .status()
+        .with_context(|| format!("could not launch {program}"))?;
+    if !status.success() {
+        bail!("{program} stopped ({status})");
+    }
+    check_config(path);
+    Ok(())
+}
+
+/// `$VISUAL`, `$EDITOR`, or Notepad on Windows.
+fn editor() -> Option<String> {
+    ["VISUAL", "EDITOR"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .find(|editor| !editor.trim().is_empty())
+        .or_else(|| cfg!(windows).then(|| "notepad".to_string()))
+}
+
+/// Says right away what is wrong with the file, rather than at the next
+/// launch.
+fn check_config(path: &Path) {
+    match Config::load(path) {
+        Ok(config) => {
+            let problems = crate::tui::check_keys(&config);
+            if problems.is_empty() {
+                println!("✓ {} is valid.", path.display());
+            }
+            for problem in problems {
+                println!("⚠ {problem}");
+            }
+        }
+        Err(e) => println!("✕ {e:#}"),
+    }
 }
 
 #[cfg(test)]

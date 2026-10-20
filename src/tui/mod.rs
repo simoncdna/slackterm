@@ -2,15 +2,18 @@ mod demo;
 mod executor;
 mod fuzzy;
 mod input;
+mod keymap;
 mod pictures;
 mod player;
 mod state;
+mod template;
 mod terminal_events;
 mod theme;
 mod ui;
 mod update;
 
 use std::io::stdout;
+use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use crossterm::event::{
@@ -22,29 +25,40 @@ use crossterm::terminal::supports_keyboard_enhancement;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
-use crate::config::{Settings, SidebarState};
+use crate::config::{Config, Settings, SidebarState};
 use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
 
+use keymap::Keymap;
 use state::App;
 use terminal_events::TerminalEvents;
 use update::{Command, Event, initial_commands, update};
 
 pub use pictures::reveal_tmux;
+pub use template::default_config;
 
-pub async fn run(session: Session) -> Result<()> {
+/// What is wrong with the `[keys]` of a config file.
+pub fn check_keys(config: &Config) -> Vec<String> {
+    Keymap::new(&config.keys).1
+}
+
+pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
     let workspace = session
         .workspaces
         .first()
         .context("no saved workspace, run `slackterm login` again")?;
     let client = SlackClient::new(DEFAULT_API_BASE, &workspace.token, &session.cookie_d)?;
-    let (settings, settings_error) = match Settings::load() {
-        Ok(settings) => (settings, None),
-        Err(e) => (Settings::default(), Some(format!("{e:#}"))),
+    let (config, config_error) = match Config::load(&config_path) {
+        Ok(config) => (config, None),
+        Err(e) => (Config::default(), Some(format!("{e:#}"))),
     };
-    let mut app = App::new(workspace, settings);
-    app.notice = settings_error;
-    app.settings_path = Settings::path().ok();
+    let (keymap, key_problems) = Keymap::new(&config.keys);
+    let mut app = App::new(workspace, config.settings);
+    app.keymap = keymap;
+    app.colors = config.colors;
+    app.notice =
+        config_error.or_else(|| (!key_problems.is_empty()).then(|| key_problems.join(" · ")));
+    app.settings_path = Some(config_path);
     let sidebar = SidebarState::load();
     app.collapsed = sidebar.collapsed;
     app.sidebar_tab = sidebar.tab;

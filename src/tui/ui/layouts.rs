@@ -7,6 +7,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
+use crate::tui::keymap::Action;
 use crate::tui::pictures::Pictures;
 use crate::tui::state::{App, Focus};
 use crate::tui::theme::Theme;
@@ -23,11 +24,20 @@ fn channel_title(app: &App) -> String {
         .unwrap_or_else(|| "…".to_string())
 }
 
+/// ` (i)`: the key that does `action`, if there is one.
+fn key_hint(app: &App, action: Action) -> String {
+    app.keymap
+        .hint(action)
+        .map(|key| format!(" ({key})"))
+        .unwrap_or_default()
+}
+
 fn placeholder(app: &App) -> String {
+    let write = key_hint(app, Action::Write);
     if thread_target(app) {
-        "Reply in thread… (i)".to_string()
+        format!("Reply in thread…{write}")
     } else {
-        format!("Message {}… (i)", channel_title(app))
+        format!("Message {}…{write}", channel_title(app))
     }
 }
 
@@ -190,7 +200,11 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
         MessageStyle::Panels,
         pictures,
     );
-    let channel_placeholder = format!("Message {}… (i)", channel_title(app));
+    let channel_placeholder = format!(
+        "Message {}…{}",
+        channel_title(app),
+        key_hint(app, Action::Write)
+    );
     input_box(
         frame,
         input_area,
@@ -224,6 +238,11 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
             MessageStyle::Panels,
             pictures,
         );
+        let keys = &app.keymap;
+        let reply_placeholder = match (keys.hint(Action::FocusThread), keys.hint(Action::Write)) {
+            (Some(focus), Some(write)) => format!("Reply… ({focus} then {write})"),
+            _ => "Reply…".to_string(),
+        };
         input_box(
             frame,
             input_area,
@@ -231,7 +250,7 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
             theme,
             &composer,
             thread_target(app),
-            "Reply… (3 then i)",
+            &reply_placeholder,
         );
     }
 
@@ -360,7 +379,11 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Picture
         .current_channel()
         .map(|c| c.topic.clone())
         .unwrap_or_default();
-    let hint = "^k go to   , settings";
+    let hint = [(Action::GoTo, "go to"), (Action::Settings, "settings")]
+        .into_iter()
+        .filter_map(|(action, label)| Some(format!("{} {label}", app.keymap.hint(action)?)))
+        .collect::<Vec<_>>()
+        .join("   ");
     let room = (header_inner.width as usize).saturating_sub(hint.width() + 2);
     let title = channel_title(app);
     let left = vec![

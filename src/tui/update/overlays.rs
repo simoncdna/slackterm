@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
+use crate::tui::keymap::Action;
 
 pub(super) fn on_overlay_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     match app.overlay {
@@ -8,8 +9,33 @@ pub(super) fn on_overlay_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Some(Overlay::Settings { .. }) => on_settings_key(app, key),
         Some(Overlay::Search(_)) => on_search_key(app, key),
         Some(Overlay::Emoji(_)) => on_emoji_key(app, key),
+        Some(Overlay::Help { .. }) => on_help_key(app, key),
         None => Vec::new(),
     }
+}
+
+fn on_help_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+    let closes = matches!(key.code, KeyCode::Esc | KeyCode::Char('q'))
+        || app.keymap.action(app.focus, key) == Some(Action::Help);
+    let max = app.help_max_scroll.get();
+    let Some(Overlay::Help { scroll }) = &mut app.overlay else {
+        return Vec::new();
+    };
+    if closes {
+        app.overlay = None;
+        return Vec::new();
+    }
+    *scroll = match key.code {
+        KeyCode::Char('j') | KeyCode::Down => *scroll + 1,
+        KeyCode::Char('k') | KeyCode::Up => scroll.saturating_sub(1),
+        KeyCode::PageDown | KeyCode::Char(' ') => *scroll + 10,
+        KeyCode::PageUp => scroll.saturating_sub(10),
+        KeyCode::Char('g') | KeyCode::Home => 0,
+        KeyCode::Char('G') | KeyCode::End => max,
+        _ => *scroll,
+    }
+    .min(max);
+    Vec::new()
 }
 
 fn on_switcher_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
@@ -63,7 +89,14 @@ fn on_settings_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     let step = match key.code {
         KeyCode::Esc | KeyCode::Char(',') | KeyCode::Char('q') => {
             app.overlay = None;
-            return vec![Command::SaveSettings(app.settings)];
+            let path = app.settings_path.clone();
+            return path
+                .map(|path| Command::SaveSettings {
+                    settings: app.settings,
+                    path,
+                })
+                .into_iter()
+                .collect();
         }
         KeyCode::Char('j') | KeyCode::Down => {
             *row = (*row + 1).min(SETTINGS_ROWS - 1);

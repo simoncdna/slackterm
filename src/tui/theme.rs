@@ -1,8 +1,8 @@
 use ratatui::style::Color;
 
-use crate::config::{Accent, Settings, ThemeName};
+use crate::config::{Accent, ColorValue, Colors, Settings, ThemeName};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
     pub bg: Color,
     /// Selected rows.
@@ -110,6 +110,34 @@ const NORD: Theme = Theme {
 };
 
 impl Theme {
+    /// The theme and accent of the settings, under the colors of the config
+    /// file.
+    pub fn new(settings: &Settings, colors: &Colors) -> Self {
+        let mut theme = Self::from_settings(settings);
+        let replaced = [
+            (colors.bg, &mut theme.bg),
+            (colors.surface, &mut theme.surface),
+            (colors.panel, &mut theme.panel),
+            (colors.border, &mut theme.border),
+            (colors.fg, &mut theme.fg),
+            (colors.muted, &mut theme.muted),
+            (colors.accent, &mut theme.accent),
+            (colors.on_accent, &mut theme.on_accent),
+            (colors.unread, &mut theme.unread),
+            (colors.link, &mut theme.link),
+            (colors.success, &mut theme.success),
+        ];
+        for (color, slot) in replaced {
+            if let Some(ColorValue(color)) = color {
+                *slot = color;
+            }
+        }
+        if let Some(nicks) = colors.nicks {
+            theme.nicks = nicks.map(|ColorValue(color)| color);
+        }
+        theme
+    }
+
     pub fn from_settings(settings: &Settings) -> Self {
         let mut theme = match settings.theme {
             ThemeName::Night => NIGHT,
@@ -156,6 +184,23 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(Theme::from_settings(&settings).accent, rgb(0x8FB8F0));
+    }
+
+    #[test]
+    fn colors_of_the_config_file_come_last() {
+        let settings = Settings {
+            accent: Accent::Blue,
+            ..Settings::default()
+        };
+        let colors = Colors {
+            accent: Some(ColorValue(Color::Red)),
+            bg: Some(ColorValue(Color::Reset)),
+            ..Colors::default()
+        };
+        let theme = Theme::new(&settings, &colors);
+        assert_eq!(theme.accent, Color::Red);
+        assert_eq!(theme.bg, Color::Reset);
+        assert_eq!(theme.fg, NIGHT.fg);
     }
 
     #[test]
