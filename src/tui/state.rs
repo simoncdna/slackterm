@@ -399,6 +399,11 @@ pub struct App {
     /// name.
     pub completion_closed: Option<usize>,
     pub editing: Option<Editing>,
+    /// What was being written in other conversations and threads, by
+    /// [`draft_key`]. The one written to now is in `input`.
+    pub drafts: HashMap<String, Input>,
+    /// Where `input` is being written to.
+    pub draft_key: Option<String>,
     /// Where the message being written is drawn, to show suggestions above.
     pub composer_area: Cell<Option<Rect>>,
     pub overlay: Option<Overlay>,
@@ -451,6 +456,8 @@ impl App {
             completion: None,
             completion_closed: None,
             editing: None,
+            drafts: HashMap::new(),
+            draft_key: None,
             composer_area: Cell::new(None),
             overlay: None,
             connection: Connection::Connecting,
@@ -968,6 +975,21 @@ impl App {
             }
             _ => self.current.clone().map(|channel| (channel, None)),
         }
+    }
+
+    /// What was left written in a conversation or a thread, when it is not
+    /// the one being written to.
+    pub fn draft(&self, channel: &str, thread_ts: Option<&str>) -> Option<&str> {
+        let draft = self.drafts.get(&draft_key(channel, thread_ts))?;
+        Some(draft.text()).filter(|text| !text.trim().is_empty())
+    }
+}
+
+/// Where a draft belongs: a conversation, or one of its threads.
+pub fn draft_key(channel: &str, thread_ts: Option<&str>) -> String {
+    match thread_ts {
+        Some(ts) => format!("{channel}/{ts}"),
+        None => channel.to_string(),
     }
 }
 

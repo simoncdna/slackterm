@@ -1341,3 +1341,62 @@ fn muted_conversations_only_count_mentions() {
     );
     assert_eq!(random(&app), (true, true, 1));
 }
+
+fn go_to(app: &mut App, name: &str) {
+    update(app, ctrl('k'));
+    typed(app, name);
+    update(app, key(KeyCode::Enter));
+}
+
+fn write(app: &mut App, text: &str) {
+    update(app, key(KeyCode::Char('i')));
+    typed(app, text);
+    update(app, key(KeyCode::Esc));
+}
+
+#[test]
+fn each_conversation_keeps_its_draft() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char('2')));
+    write(&mut app, "for general");
+
+    go_to(&mut app, "random");
+    assert_eq!(app.current.as_deref(), Some("C2"));
+    assert_eq!(app.input.text(), "");
+    write(&mut app, "for random");
+    go_to(&mut app, "general");
+
+    assert_eq!(app.input.text(), "for general");
+    assert_eq!(app.draft("C2", None), Some("for random"));
+}
+
+#[test]
+fn a_thread_keeps_its_own_draft() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char('2')));
+    write(&mut app, "in the channel");
+    update(&mut app, key(KeyCode::Char('t')));
+    assert_eq!(app.focus, Focus::Thread);
+    assert_eq!(app.input.text(), "");
+    write(&mut app, "in the thread");
+
+    update(&mut app, key(KeyCode::Char('2')));
+    assert_eq!(app.input.text(), "in the channel");
+    update(&mut app, key(KeyCode::Char('3')));
+    assert_eq!(app.input.text(), "in the thread");
+}
+
+#[test]
+fn a_sent_message_leaves_no_draft() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char('2')));
+    update(&mut app, key(KeyCode::Char('i')));
+    typed(&mut app, "hello");
+    update(&mut app, key(KeyCode::Enter));
+    update(&mut app, key(KeyCode::Esc));
+
+    go_to(&mut app, "random");
+    go_to(&mut app, "general");
+    assert_eq!(app.input.text(), "");
+    assert!(app.draft("C1", None).is_none());
+}

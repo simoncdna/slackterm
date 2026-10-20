@@ -199,6 +199,7 @@ pub fn update(app: &mut App, event: Event) -> Vec<Command> {
         Event::Api(event) => on_api(app, event),
         Event::Rtm(event) => on_rtm(app, event),
     };
+    compose::follow_conversation(app);
     compose::refresh(app);
     commands.extend(request_pictures(app));
     commands.extend(request_public_channels(app));

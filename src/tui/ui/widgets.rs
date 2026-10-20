@@ -816,6 +816,8 @@ fn channel_row(
         (text, Style::new().fg(color).bold())
     } else if channel.unread {
         ("•".to_string(), Style::new().fg(theme.unread))
+    } else if app.draft(&channel.id, None).is_some() {
+        ("✎".to_string(), Style::new().fg(theme.muted))
     } else {
         (when.unwrap_or_default(), Style::new().fg(theme.muted))
     };

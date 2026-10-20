@@ -206,11 +206,18 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
         MessageStyle::Panels,
         pictures,
     );
-    let channel_placeholder = format!(
-        "Message {}…{}",
-        channel_title(app),
-        key_hint(app, Action::Write)
-    );
+    let channel_draft = app
+        .current
+        .as_deref()
+        .and_then(|channel| app.draft(channel, None));
+    let channel_placeholder = match channel_draft {
+        Some(draft) => format!("✎ {draft}"),
+        None => format!(
+            "Message {}…{}",
+            channel_title(app),
+            key_hint(app, Action::Write)
+        ),
+    };
     input_box(
         frame,
         input_area,
@@ -251,8 +258,17 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
             pictures,
         );
         let keys = &app.keymap;
-        let reply_placeholder = match (keys.hint(Action::FocusThread), keys.hint(Action::Write)) {
-            (Some(focus), Some(write)) => format!("Reply… ({focus} then {write})"),
+        let reply_draft = app
+            .thread
+            .as_ref()
+            .and_then(|t| app.draft(&t.channel, Some(&t.ts)));
+        let reply_placeholder = match (
+            reply_draft,
+            keys.hint(Action::FocusThread),
+            keys.hint(Action::Write),
+        ) {
+            (Some(draft), _, _) => format!("✎ {draft}"),
+            (None, Some(focus), Some(write)) => format!("Reply… ({focus} then {write})"),
             _ => "Reply…".to_string(),
         };
         input_box(

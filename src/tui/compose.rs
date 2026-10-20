@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use super::fuzzy::fuzzy_match;
 use super::input::Input;
-use super::state::{App, ChannelKind, Mode};
+use super::state::{App, ChannelKind, Mode, draft_key};
 
 /// Suggestions shown at most.
 const SHOWN: usize = 6;
@@ -217,6 +217,31 @@ pub fn name_before_cursor(input: &Input) -> Option<usize> {
         .next_back()
         .is_none_or(|c| !c.is_alphanumeric());
     (matches!(sigil, '@' | '#') && starts_word).then_some(sigil_at)
+}
+
+/// Keeps a draft per conversation and per thread: when the user starts
+/// writing somewhere else, the message box puts away what it held and
+/// brings back what was left there. An edit in progress stays put.
+pub fn follow_conversation(app: &mut App) {
+    if app.editing.is_some() {
+        return;
+    }
+    let key = app
+        .compose_target()
+        .map(|(channel, thread_ts)| draft_key(&channel, thread_ts.as_deref()));
+    if key == app.draft_key {
+        return;
+    }
+    let left = std::mem::take(&mut app.input);
+    if let Some(old) = app.draft_key.take()
+        && !left.text().trim().is_empty()
+    {
+        app.drafts.insert(old, left);
+    }
+    if let Some(draft) = key.as_ref().and_then(|key| app.drafts.remove(key)) {
+        app.input = draft;
+    }
+    app.draft_key = key;
 }
 
 /// Follows the cursor: suggests while it ends a name, unless the user
