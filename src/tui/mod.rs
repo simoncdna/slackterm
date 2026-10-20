@@ -5,6 +5,7 @@ mod input;
 mod pictures;
 mod player;
 mod state;
+mod terminal_events;
 mod theme;
 mod ui;
 mod update;
@@ -13,12 +14,11 @@ use std::io::stdout;
 
 use anyhow::{Context, Result};
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, EventStream, KeyEventKind,
+    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::supports_keyboard_enhancement;
-use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
@@ -27,6 +27,7 @@ use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
 
 use state::App;
+use terminal_events::TerminalEvents;
 use update::{Command, Event, initial_commands, update};
 
 pub use pictures::reveal_tmux;
@@ -142,15 +143,14 @@ async fn event_loop(
     events: &mut UnboundedReceiver<Event>,
     execute: &impl Fn(Command),
 ) -> Result<()> {
-    // `None` while another program (mpv) has the keyboard.
-    let mut terminal_events = Some(EventStream::new());
+    let mut terminal_events = TerminalEvents::spawn();
     loop {
         screen
             .terminal
             .draw(|frame| ui::draw(frame, app, screen.pictures))?;
 
         let event = tokio::select! {
-            Some(event) = next_terminal_event(&mut terminal_events) => match event? {
+            Some(event) = terminal_events.next() => match event? {
                 TermEvent::Key(key) if key.kind != KeyEventKind::Release => Event::Key(key),
                 TermEvent::Paste(text) => Event::Paste(text),
                 _ => continue,
@@ -162,7 +162,7 @@ async fn event_loop(
         for command in update(app, event) {
             match command {
                 Command::Play(target) => {
-                    if let Err(notice) = play(&target, screen, &mut terminal_events).await {
+                    if let Err(notice) = play(&target, screen, &terminal_events).await {
                         app.notice = Some(notice);
                     }
                 }
@@ -175,21 +175,12 @@ async fn event_loop(
     }
 }
 
-async fn next_terminal_event(
-    stream: &mut Option<EventStream>,
-) -> Option<std::io::Result<TermEvent>> {
-    match stream {
-        Some(stream) => stream.next().await,
-        None => std::future::pending().await,
-    }
-}
-
 /// Hands the terminal to mpv to play `target` (a downloaded file or a web
 /// link), then takes it back.
 async fn play(
     target: &str,
     screen: &mut Screen<'_>,
-    terminal_events: &mut Option<EventStream>,
+    terminal_events: &TerminalEvents,
 ) -> Result<(), String> {
     let mpv = executor::in_path("mpv")
         .ok_or("pour lire dans le terminal, installe mpv : brew install mpv yt-dlp")?;
@@ -200,7 +191,7 @@ async fn play(
     let output = player::video_output(std::env::var_os("TMUX").is_some(), &term);
 
     // Stop reading the keyboard: the keys are mpv's until it quits.
-    terminal_events.take();
+    terminal_events.pause();
     leave_interface_mode(*screen.enhanced);
     ratatui::restore();
 
@@ -215,7 +206,7 @@ async fn play(
             *screen.enhanced = enter_interface_mode();
             screen.terminal.clear()
         });
-    *terminal_events = Some(EventStream::new());
+    terminal_events.resume();
     // Pictures sent to the terminal may be gone after the screen switch.
     screen.pictures.forget();
     resumed.map_err(|e| format!("terminal non restauré : {e}"))?;
