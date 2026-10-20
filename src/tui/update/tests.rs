@@ -1206,3 +1206,106 @@ fn esc_closes_the_suggestions_then_stops_writing() {
     update(&mut app, key(KeyCode::Esc));
     assert_eq!(app.mode, Mode::Normal);
 }
+
+/// #general open with one of the user's own messages last.
+fn app_with_my_message() -> App {
+    let mut app = loaded_app();
+    app.users.insert("U2".into(), user("U2", "hugo"));
+    update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C1".into(),
+            message: message("3.0", "UME", "thanks <@U2> &amp; co"),
+        }),
+    );
+    update(&mut app, key(KeyCode::Char('2')));
+    app
+}
+
+#[test]
+fn edits_one_of_my_messages() {
+    let mut app = app_with_my_message();
+
+    update(&mut app, key(KeyCode::Char('e')));
+    assert_eq!(app.mode, Mode::Insert);
+    assert_eq!(app.input.text(), "thanks @hugo & co");
+    typed(&mut app, "!");
+    let commands = update(&mut app, key(KeyCode::Enter));
+
+    assert_eq!(
+        commands,
+        [Command::Edit {
+            channel: "C1".into(),
+            ts: "3.0".into(),
+            text: "thanks <@U2> &amp; co!".into()
+        }]
+    );
+    assert!(app.editing.is_none());
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Edited {
+            channel: "C1".into(),
+            ts: "3.0".into(),
+            text: "thanks <@U2> &amp; co!".into(),
+        }),
+    );
+    let edited = app.find_message("C1", "3.0").unwrap();
+    assert!(edited.text.ends_with("co!") && edited.is_edited());
+}
+
+#[test]
+fn cancelling_an_edit_gives_the_draft_back() {
+    let mut app = app_with_my_message();
+    update(&mut app, key(KeyCode::Char('i')));
+    typed(&mut app, "half a thought");
+    update(&mut app, key(KeyCode::Esc));
+
+    update(&mut app, key(KeyCode::Char('e')));
+    assert_eq!(app.input.text(), "thanks @hugo & co");
+    update(&mut app, key(KeyCode::Esc));
+
+    assert!(app.editing.is_none());
+    assert_eq!(app.input.text(), "half a thought");
+}
+
+#[test]
+fn only_my_own_messages_change() {
+    let mut app = loaded_app();
+    update(&mut app, key(KeyCode::Char('2')));
+    update(&mut app, key(KeyCode::Char('e')));
+    assert!(app.editing.is_none());
+    assert!(
+        app.notice
+            .as_deref()
+            .is_some_and(|n| n.contains("your own"))
+    );
+    update(&mut app, key(KeyCode::Char('d')));
+    assert!(app.overlay.is_none());
+}
+
+#[test]
+fn deletes_after_asking() {
+    let mut app = app_with_my_message();
+    update(&mut app, key(KeyCode::Char('d')));
+    assert!(matches!(app.overlay, Some(Overlay::DeleteMessage(_))));
+    assert!(update(&mut app, key(KeyCode::Char('n'))).is_empty());
+    assert!(app.overlay.is_none());
+
+    update(&mut app, key(KeyCode::Char('d')));
+    let commands = update(&mut app, key(KeyCode::Char('y')));
+    assert_eq!(
+        commands,
+        [Command::Delete {
+            channel: "C1".into(),
+            ts: "3.0".into()
+        }]
+    );
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Deleted {
+            channel: "C1".into(),
+            ts: "3.0".into(),
+        }),
+    );
+    assert!(app.find_message("C1", "3.0").is_none());
+}

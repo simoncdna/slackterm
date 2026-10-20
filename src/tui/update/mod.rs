@@ -16,8 +16,8 @@ use crate::slack::{
 use super::compose;
 use super::input::Input;
 use super::state::{
-    App, Channel, Connection, EmojiPicker, Focus, History, Jump, Mode, Overlay, ReactionTarget,
-    SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget, Thread,
+    App, Channel, Connection, Editing, EmojiPicker, Focus, History, Jump, Mode, Overlay,
+    ReactionTarget, SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget, Thread,
 };
 
 // Events are few and short-lived; boxing the large variants would only add noise.
@@ -80,6 +80,16 @@ pub enum ApiEvent {
     CountsUnavailable,
     /// Every public channel of the workspace, for the switcher.
     PublicChannels(Vec<Conversation>),
+    /// One of the user's messages, rewritten.
+    Edited {
+        channel: String,
+        ts: String,
+        text: String,
+    },
+    Deleted {
+        channel: String,
+        ts: String,
+    },
     /// A conversation the user just started or joined, to open.
     Opened(Conversation),
     /// Slack no longer accepts the session.
@@ -150,6 +160,15 @@ pub enum Command {
     OpenDirect(String),
     /// Join this public channel.
     Join(String),
+    Edit {
+        channel: String,
+        ts: String,
+        text: String,
+    },
+    Delete {
+        channel: String,
+        ts: String,
+    },
 }
 
 const PAGE: usize = 10;
@@ -246,7 +265,7 @@ fn on_paste(app: &mut App, text: &str) {
         }
         Some(Overlay::Search(search)) => search.query.insert_str(&text.replace('\n', " ")),
         Some(Overlay::Emoji(picker)) => picker.query.insert_str(text.trim()),
-        Some(Overlay::Settings { .. } | Overlay::Help { .. }) => {}
+        Some(Overlay::Settings { .. } | Overlay::Help { .. } | Overlay::DeleteMessage(_)) => {}
         None if app.mode == Mode::Insert => app.input.insert_str(&text),
         None => {}
     }
@@ -380,6 +399,17 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
             app.public_channels = channels;
             Vec::new()
         }
+        ApiEvent::Edited { channel, ts, text } => {
+            let me = app.my_id.clone();
+            for messages in messages_of(app, &channel) {
+                if let Some(message) = messages.iter_mut().find(|m| m.ts == ts) {
+                    message.text = text.clone();
+                    message.edited = Some(serde_json::json!({ "user": me }));
+                }
+            }
+            Vec::new()
+        }
+        ApiEvent::Deleted { channel, ts } => on_rtm(app, RtmEvent::MessageDeleted { channel, ts }),
         ApiEvent::Opened(conversation) => {
             let id = conversation.id.clone();
             if app.channel(&id).is_none() {
@@ -588,6 +618,7 @@ fn mark_read(app: &App, channel: &str) -> Option<Command> {
 }
 
 fn open_channel(app: &mut App, id: &str) -> Vec<Command> {
+    stop_editing(app);
     app.current = Some(id.to_string());
     app.selected = None;
     app.thread = None;
@@ -604,6 +635,13 @@ fn open_channel(app: &mut App, id: &str) -> Vec<Command> {
     match app.histories.get(id) {
         Some(History { loaded: true, .. }) => mark_read(app, id).into_iter().collect(),
         _ => vec![Command::LoadHistory(id.to_string())],
+    }
+}
+
+/// Puts back what the message box held before an edit started.
+fn stop_editing(app: &mut App) {
+    if let Some(editing) = app.editing.take() {
+        app.input = editing.draft;
     }
 }
 

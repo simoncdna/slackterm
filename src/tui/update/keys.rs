@@ -134,6 +134,8 @@ fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
         Action::React => open_emoji_picker(app),
         Action::OpenFiles => return open_files(app),
         Action::Play => return play(app),
+        Action::Edit => edit_message(app),
+        Action::Delete => confirm_delete(app),
         Action::Left => focus_sidebar(app),
         _ => {}
     }
@@ -157,9 +159,37 @@ fn on_thread_action(app: &mut App, action: Action) -> Vec<Command> {
         Action::React => open_emoji_picker(app),
         Action::OpenFiles => return open_files(app),
         Action::Play => return play(app),
+        Action::Edit => edit_message(app),
+        Action::Delete => confirm_delete(app),
         _ => {}
     }
     Vec::new()
+}
+
+/// Brings one of the user's messages back into the message box, keeping
+/// what was being written for later.
+fn edit_message(app: &mut App) {
+    let Some(target) = app.own_message() else {
+        app.notice = Some("only your own messages can be edited".into());
+        return;
+    };
+    let mut input = Input::default();
+    input.insert_str(&compose::decode(&target.text, app));
+    stop_editing(app);
+    let draft = std::mem::replace(&mut app.input, input);
+    app.editing = Some(Editing {
+        channel: target.channel,
+        ts: target.ts,
+        draft,
+    });
+    app.mode = Mode::Insert;
+}
+
+fn confirm_delete(app: &mut App) {
+    match app.own_message() {
+        Some(target) => app.overlay = Some(Overlay::DeleteMessage(target)),
+        None => app.notice = Some("only your own messages can be deleted".into()),
+    }
 }
 
 fn open_emoji_picker(app: &mut App) {
@@ -276,7 +306,10 @@ fn on_insert_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         return Vec::new();
     }
     match key.code {
-        KeyCode::Esc => app.mode = Mode::Normal,
+        KeyCode::Esc => {
+            stop_editing(app);
+            app.mode = Mode::Normal;
+        }
         KeyCode::Enter if newline => app.input.insert('\n'),
         KeyCode::Char('j') if ctrl => app.input.insert('\n'),
         KeyCode::Enter => return send(app),
@@ -335,6 +368,15 @@ fn on_suggestions_key(app: &mut App, key: KeyEvent) -> bool {
 fn send(app: &mut App) -> Vec<Command> {
     if app.input.text().trim().is_empty() {
         return Vec::new();
+    }
+    if let Some(editing) = app.editing.take() {
+        let typed = std::mem::replace(&mut app.input, editing.draft);
+        app.mode = Mode::Normal;
+        return vec![Command::Edit {
+            channel: editing.channel,
+            ts: editing.ts,
+            text: compose::encode(typed.text().trim(), app),
+        }];
     }
     let Some((channel, thread_ts)) = app.compose_target() else {
         return Vec::new();

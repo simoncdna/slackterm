@@ -184,6 +184,8 @@ slackterm logout       # delete the credentials
 | `g` / `G` | First message / back to the bottom |
 | `t` | Open the message's thread |
 | `r` | React to the message (in threads too) |
+| `e` | Edit your message: the selected one, else your latest |
+| `d` | Delete your message, after confirming |
 | `o` | Open the message's files |
 | `p` | Play the message's video in the terminal (needs [mpv](https://mpv.io), and [yt-dlp](https://github.com/yt-dlp/yt-dlp) for links) |
 | `i`, `a` or `Enter` | Write |

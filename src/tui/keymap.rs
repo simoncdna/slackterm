@@ -36,6 +36,8 @@ pub enum Action {
     React,
     OpenFiles,
     Play,
+    Edit,
+    Delete,
 }
 
 /// Where an action works, as the help screen groups them.
@@ -187,6 +189,8 @@ pub const ACTIONS: &[Definition] = &[
         &["p"],
         "Play the message's video in the terminal",
     ),
+    define(Edit, "edit", Message, &["e"], "Edit your message"),
+    define(Delete, "delete", Message, &["d"], "Delete your message"),
 ];
 
 /// What works in each pane, before the actions that work anywhere: a key
@@ -195,9 +199,10 @@ fn pane_actions(focus: Focus) -> &'static [Action] {
     match focus {
         Focus::Sidebar => &[Down, Up, Top, Bottom, Left, Right, Open],
         Focus::Messages => &[
-            Down, Up, PageDown, PageUp, Top, Bottom, Left, Thread, React, OpenFiles, Play,
+            Down, Up, PageDown, PageUp, Top, Bottom, Left, Thread, React, OpenFiles, Play, Edit,
+            Delete,
         ],
-        Focus::Thread => &[Down, Up, Bottom, Left, React, OpenFiles, Play],
+        Focus::Thread => &[Down, Up, Bottom, Left, React, OpenFiles, Play, Edit, Delete],
     }
 }
 
@@ -568,13 +573,13 @@ mod tests {
     #[test]
     fn the_table_replaces_keys_and_reports_problems() {
         let (keymap, problems) = Keymap::new(&table(&[
-            ("react", &["e"]),
+            ("react", &["w"]),
             ("play", &[]),
             ("quit", &["x", "hyper+q"]),
             ("fly", &["f"]),
         ]));
-        let e = press(KeyCode::Char('e'), KeyModifiers::NONE);
-        assert_eq!(keymap.action(Focus::Messages, e), Some(React));
+        let w = press(KeyCode::Char('w'), KeyModifiers::NONE);
+        assert_eq!(keymap.action(Focus::Messages, w), Some(React));
         let p = press(KeyCode::Char('p'), KeyModifiers::NONE);
         assert_eq!(keymap.action(Focus::Messages, p), None);
         assert_eq!(keymap.hint(Quit).as_deref(), Some("x"));

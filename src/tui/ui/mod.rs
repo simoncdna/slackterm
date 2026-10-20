@@ -44,6 +44,9 @@ pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
         Some(Overlay::Search(search)) => overlays::search(frame, app, &theme, search),
         Some(Overlay::Emoji(picker)) => overlays::emoji_picker(frame, app, &theme, picker),
         Some(Overlay::Help { scroll }) => overlays::help(frame, app, &theme, *scroll),
+        Some(Overlay::DeleteMessage(target)) => {
+            overlays::delete_message(frame, app, &theme, target)
+        }
         None => return pictures.hide_under(frame, &popups, theme.bg),
     };
     popups.push(overlay);
@@ -262,10 +265,10 @@ mod tests {
         assert!(text.contains("👍 :+1:  ✓ already added"), "{text}");
     }
 
-    fn with_react_on_e(app: &mut App) {
+    fn with_react_on_w(app: &mut App) {
         let keys = [(
             "react".to_string(),
-            crate::config::KeyList(vec!["e".into()]),
+            crate::config::KeyList(vec!["w".into()]),
         )]
         .into();
         app.keymap = crate::tui::keymap::Keymap::new(&keys).0;
@@ -274,7 +277,7 @@ mod tests {
     #[test]
     fn the_help_lists_the_keys_in_use() {
         let mut app = sample_app();
-        with_react_on_e(&mut app);
+        with_react_on_w(&mut app);
         app.overlay = Some(Overlay::Help { scroll: 0 });
 
         let text = screen(&app, 100, 50);
@@ -285,7 +288,7 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains(&format!("{:<16}React to the message", "e")),
+            text.contains(&format!("{:<16}React to the message", "w")),
             "{text}"
         );
         assert!(text.contains(&format!("{:<16}Send", "⏎")), "{text}");
@@ -308,10 +311,10 @@ mod tests {
     #[test]
     fn the_status_bar_shows_the_keys_in_use() {
         let mut app = sample_app();
-        with_react_on_e(&mut app);
+        with_react_on_w(&mut app);
         app.focus = Focus::Messages;
         let text = screen(&app, 160, 30);
-        assert!(text.contains("e react"), "{text}");
+        assert!(text.contains("w react"), "{text}");
         assert!(!text.contains("r react"), "{text}");
     }
 

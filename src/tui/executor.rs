@@ -207,6 +207,20 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .await
             .map(ApiEvent::Opened)
             .map_err(failed("join"))?,
+        Command::Edit { channel, ts, text } => {
+            client
+                .chat_update(&channel, &ts, &text)
+                .await
+                .map_err(failed("edit"))?;
+            ApiEvent::Edited { channel, ts, text }
+        }
+        Command::Delete { channel, ts } => {
+            client
+                .chat_delete(&channel, &ts)
+                .await
+                .map_err(failed("delete"))?;
+            ApiEvent::Deleted { channel, ts }
+        }
         Command::SaveSidebar(state) => {
             state
                 .save()

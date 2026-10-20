@@ -12,7 +12,7 @@ use crate::slack::{HIGHLIGHT_END, HIGHLIGHT_START, SearchMatch, mrkdwn};
 use crate::tui::compose::{self, Completion};
 use crate::tui::input::Input;
 use crate::tui::keymap::{ACTIONS, Scope};
-use crate::tui::state::{App, EmojiPicker, Search, SearchStatus, SwitcherTarget};
+use crate::tui::state::{App, EmojiPicker, ReactionTarget, Search, SearchStatus, SwitcherTarget};
 use crate::tui::theme::Theme;
 
 use super::text::{Styled, align_left, local_time, short_datetime, truncate, truncate_styled};
@@ -508,6 +508,44 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
             theme,
             &[("⏎", "react / remove"), ("↑↓", "select"), ("esc", "close")],
         )),
+        hint_area,
+    );
+    area
+}
+
+/// Asks before deleting one of the user's messages, showing its start.
+pub fn delete_message(
+    frame: &mut Frame,
+    app: &App,
+    theme: &Theme,
+    target: &ReactionTarget,
+) -> Rect {
+    let screen = frame.area();
+    let width = screen.width.saturating_sub(4).min(64);
+    let height = 7.min(screen.height);
+    let area = Rect {
+        x: screen.x + (screen.width - width) / 2,
+        y: screen.y + (screen.height - height) / 3,
+        width,
+        height,
+    };
+    let inner = popup(frame, area, theme, "delete message", "for everyone".into());
+    let [text_area, hint_area] =
+        Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(inner);
+    let text: String = mrkdwn::parse(&target.text, &app.my_id, app)
+        .into_iter()
+        .map(|segment| segment.text.replace('\n', " "))
+        .collect();
+    let lines = vec![
+        Line::default(),
+        Line::styled(
+            truncate(&format!("“{text}”"), text_area.width as usize),
+            Style::new().fg(theme.fg),
+        ),
+    ];
+    frame.render_widget(Paragraph::new(lines), text_area);
+    frame.render_widget(
+        Paragraph::new(hint_line(theme, &[("y", "delete"), ("n", "keep")])),
         hint_area,
     );
     area

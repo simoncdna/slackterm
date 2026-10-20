@@ -1054,6 +1054,11 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
             .map(|(key, label)| (key.to_string(), label))
             .into();
     }
+    if app.mode == Mode::Insert && app.editing.is_some() {
+        return [("⏎", "save"), ("⇧⏎", "new line"), ("esc", "cancel")]
+            .map(|(key, label)| (key.to_string(), label))
+            .into();
+    }
     if app.mode == Mode::Insert {
         return [("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")]
             .map(|(key, label)| (key.to_string(), label))
@@ -1073,6 +1078,7 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
             (keys.hint(Action::Play), "play"),
             (keys.hint(Action::Thread), "thread"),
             (keys.hint(Action::Write), "write"),
+            (keys.hint(Action::Edit), "edit"),
         ],
         Focus::Thread => vec![
             (keys.pair(Action::Down, Action::Up), "select"),

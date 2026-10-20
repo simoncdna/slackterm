@@ -308,6 +308,17 @@ pub enum Overlay {
     Help {
         scroll: usize,
     },
+    /// Asks before deleting one of the user's messages.
+    DeleteMessage(ReactionTarget),
+}
+
+/// One of the user's messages, being rewritten in the message box.
+#[derive(Debug)]
+pub struct Editing {
+    pub channel: String,
+    pub ts: String,
+    /// What the message box held before, put back afterwards.
+    pub draft: Input,
 }
 
 pub const SETTINGS_ROWS: usize = 5;
@@ -381,6 +392,7 @@ pub struct App {
     /// Where the user closed the suggestions, so they stay closed for that
     /// name.
     pub completion_closed: Option<usize>,
+    pub editing: Option<Editing>,
     /// Where the message being written is drawn, to show suggestions above.
     pub composer_area: Cell<Option<Rect>>,
     pub overlay: Option<Overlay>,
@@ -431,6 +443,7 @@ impl App {
             input: Input::default(),
             completion: None,
             completion_closed: None,
+            editing: None,
             composer_area: Cell::new(None),
             overlay: None,
             connection: Connection::Connecting,
@@ -803,7 +816,26 @@ impl App {
     /// The message `r` reacts to: the selected one in the focused list, else
     /// the latest.
     pub fn reaction_target(&self) -> Option<ReactionTarget> {
-        let (channel, messages, selected) = match (&self.thread, self.focus) {
+        let (channel, messages, selected) = self.focused_messages()?;
+        let message = selected.map_or(messages.last(), |i| messages.get(i))?;
+        Some(self.target(channel, message))
+    }
+
+    /// The message `e` and `d` act on: the selected one if it is the user's,
+    /// else the user's latest in the pane.
+    pub fn own_message(&self) -> Option<ReactionTarget> {
+        let (channel, messages, selected) = self.focused_messages()?;
+        let mine = |message: &&Message| message.user.as_deref() == Some(self.my_id.as_str());
+        let message = match selected {
+            Some(i) => messages.get(i).filter(mine)?,
+            None => messages.iter().rev().find(mine)?,
+        };
+        Some(self.target(channel, message))
+    }
+
+    /// The messages of the pane with focus, with the selected one.
+    fn focused_messages(&self) -> Option<(&String, &[Message], Option<usize>)> {
+        Some(match (&self.thread, self.focus) {
             (Some(thread), Focus::Thread) => {
                 (&thread.channel, &thread.messages[..], thread.selected)
             }
@@ -812,14 +844,16 @@ impl App {
                 self.current_messages(),
                 self.selected,
             ),
-        };
-        let message = selected.map_or(messages.last(), |i| messages.get(i))?;
-        Some(ReactionTarget {
-            channel: channel.clone(),
+        })
+    }
+
+    fn target(&self, channel: &str, message: &Message) -> ReactionTarget {
+        ReactionTarget {
+            channel: channel.to_string(),
             ts: message.ts.clone(),
             author: self.author(message),
             text: message.text.clone(),
-        })
+        }
     }
 
     /// The loaded copy of a message, wherever it is shown.

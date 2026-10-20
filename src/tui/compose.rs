@@ -68,6 +68,53 @@ pub fn encode(text: &str, app: &App) -> String {
     out
 }
 
+/// A message as the user would type it again, to edit it: mentions back
+/// to `@handle` and `#channel`, links to their address. The way back from
+/// [`encode`].
+pub fn decode(text: &str, app: &App) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    // Typed `<` are escaped, so every `<` opens a reference.
+    while let Some(start) = rest.find('<') {
+        let Some(length) = rest[start..].find('>') else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&typed_reference(&rest[start + 1..start + length], app));
+        rest = &rest[start + length + 1..];
+    }
+    out.push_str(rest);
+    out.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+/// The inside of a `<…>` reference, as it would be typed.
+fn typed_reference(inner: &str, app: &App) -> String {
+    let (target, label) = match inner.split_once('|') {
+        Some((target, label)) => (target, Some(label).filter(|l| !l.is_empty())),
+        None => (inner, None),
+    };
+    if let Some(id) = target.strip_prefix('@') {
+        let handle = app.users.get(id).map(|u| u.name.clone());
+        let name = handle.or(label.map(str::to_string));
+        return format!("@{}", name.unwrap_or_else(|| id.to_string()));
+    }
+    if let Some(id) = target.strip_prefix('#') {
+        let name = label
+            .map(str::to_string)
+            .or_else(|| app.channel_name_of(id));
+        return format!("#{}", name.unwrap_or_else(|| id.to_string()));
+    }
+    if let Some(special) = target.strip_prefix('!') {
+        return match special {
+            "here" | "channel" | "everyone" => format!("@{special}"),
+            _ => label.unwrap_or_default().to_string(),
+        };
+    }
+    target.trim_start_matches("mailto:").to_string()
+}
+
 /// Slack reads `<`, `>` and `&` as markup, so typed text must escape them.
 fn escape(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -321,6 +368,20 @@ mod tests {
         // Two people show as Camille: only the handle says which.
         assert_eq!(encode("@Camille"), "<@U3>");
         assert_eq!(encode("a < b && @hugo"), "a &lt; b &amp;&amp; <@U2>");
+    }
+
+    #[test]
+    fn gives_back_what_was_typed_to_edit_it() {
+        let app = team();
+        for typed in [
+            "hi @hugo.bernard, see #dev & <b>",
+            "@here `code` in #design",
+            "nothing special",
+        ] {
+            assert_eq!(decode(&encode(typed, &app), &app), typed);
+        }
+        let link = "read <https://x.dev|the doc> or <mailto:a@b.c|a@b.c> <@U9|ghost>";
+        assert_eq!(decode(link, &app), "read https://x.dev or a@b.c @ghost");
     }
 
     #[test]

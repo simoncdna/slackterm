@@ -10,7 +10,26 @@ pub(super) fn on_overlay_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Some(Overlay::Search(_)) => on_search_key(app, key),
         Some(Overlay::Emoji(_)) => on_emoji_key(app, key),
         Some(Overlay::Help { .. }) => on_help_key(app, key),
+        Some(Overlay::DeleteMessage(_)) => on_delete_key(app, key),
         None => Vec::new(),
+    }
+}
+
+/// `y` deletes, `n` or Esc keeps the message; other keys wait for one.
+fn on_delete_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
+    let Some(Overlay::DeleteMessage(target)) = app.overlay.take() else {
+        return Vec::new();
+    };
+    match key.code {
+        KeyCode::Char('y') | KeyCode::Enter => vec![Command::Delete {
+            channel: target.channel,
+            ts: target.ts,
+        }],
+        KeyCode::Char('n') | KeyCode::Esc => Vec::new(),
+        _ => {
+            app.overlay = Some(Overlay::DeleteMessage(target));
+            Vec::new()
+        }
     }
 }
 

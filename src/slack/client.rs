@@ -244,6 +244,22 @@ impl SlackClient {
         Ok(serde_json::from_value(body["message"].clone())?)
     }
 
+    pub async fn chat_update(&self, channel: &str, ts: &str, text: &str) -> Result<(), SlackError> {
+        let params = vec![
+            ("channel", channel.into()),
+            ("ts", ts.into()),
+            ("text", text.into()),
+        ];
+        self.call_value("chat.update", &params).await?;
+        Ok(())
+    }
+
+    pub async fn chat_delete(&self, channel: &str, ts: &str) -> Result<(), SlackError> {
+        let params = vec![("channel", channel.into()), ("ts", ts.into())];
+        self.call_value("chat.delete", &params).await?;
+        Ok(())
+    }
+
     pub async fn reactions_add(
         &self,
         channel: &str,

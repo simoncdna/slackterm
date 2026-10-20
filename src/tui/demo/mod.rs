@@ -197,6 +197,19 @@ impl Demo {
                 self.state().content.public_channels.clone(),
             )),
             Command::OpenDirect(user) => send(ApiEvent::Opened(self.state().open_direct(&user))),
+            Command::Edit { channel, ts, text } => {
+                if let Some(message) = self.state().find(&channel, &ts) {
+                    message.text = text.clone();
+                    message.edited = Some(serde_json::json!({ "user": ME }));
+                }
+                send(ApiEvent::Edited { channel, ts, text });
+            }
+            Command::Delete { channel, ts } => {
+                if let Some(messages) = self.state().content.messages.get_mut(&channel) {
+                    messages.retain(|m| m.ts != ts);
+                }
+                send(ApiEvent::Deleted { channel, ts });
+            }
             Command::Join(channel) => {
                 if let Some(conversation) = self.state().join(&channel) {
                     send(ApiEvent::Opened(conversation));

@@ -174,7 +174,13 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
     );
     let inner = block.inner(center);
     frame.render_widget(block, center);
-    let composer = InputStyle::Boxed { title: "message" };
+    let composer = InputStyle::Boxed {
+        title: if app.editing.is_some() && !thread_target(app) {
+            "edit message"
+        } else {
+            "message"
+        },
+    };
     let topic = app
         .current_channel()
         .map(|c| c.topic.clone())
@@ -224,7 +230,13 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
         );
         let inner = block.inner(right);
         frame.render_widget(block, right);
-        let composer = InputStyle::Boxed { title: "reply" };
+        let composer = InputStyle::Boxed {
+            title: if app.editing.is_some() && thread_target(app) {
+                "edit reply"
+            } else {
+                "reply"
+            },
+        };
         let [messages_area, input_area] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(input_height(app, inner.width, &composer)),
@@ -260,12 +272,12 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
 // ----------------------------------------------- B · dense stream (IRC)
 
 pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
-    let target = if thread_target(app) { "thread" } else { "" };
-    let prompt = if target.is_empty() {
-        format!("[{}] ", app.my_name)
-    } else {
-        format!("[{} → thread] ", app.my_name)
+    let target = match (app.editing.is_some(), thread_target(app)) {
+        (true, _) => " · editing",
+        (false, true) => " → thread",
+        (false, false) => "",
     };
+    let prompt = format!("[{}{target}] ", app.my_name);
     let composer = InputStyle::Prompt { prompt };
     let [title, main, thread, status, input] = Layout::vertical([
         Constraint::Length(1),
@@ -355,7 +367,11 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
 
 pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let composer = InputStyle::Prompt {
-        prompt: "› ".into(),
+        prompt: if app.editing.is_some() {
+            "editing › ".into()
+        } else {
+            "› ".into()
+        },
     };
     let area = frame.area();
     let width = area.width.saturating_sub(4);
