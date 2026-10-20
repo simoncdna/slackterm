@@ -136,7 +136,7 @@ pub fn message_lines(
         previous = Some(message);
         if in_thread && index == 0 {
             let count = message.reply_count.max(messages.len() as u32 - 1);
-            let label = format!("{count} réponse{}", if count > 1 { "s" } else { "" });
+            let label = format!("{count} repl{}", if count == 1 { "y" } else { "ies" });
             lines.push(separator(&label, width, theme.muted, theme.border));
             previous = None;
         }
@@ -229,10 +229,10 @@ impl MessagePiece<'_> {
             body.push((format!(" · {title}{by}"), Style::new().fg(theme.link)));
         }
         if body.is_empty() {
-            body.push(("[contenu non affiché]".into(), muted.italic()));
+            body.push(("[content not shown]".into(), muted.italic()));
         }
         if self.message.is_edited() {
-            body.push((" (modifié)".into(), muted));
+            body.push((" (edited)".into(), muted));
         }
         body
     }
@@ -284,9 +284,9 @@ impl MessagePiece<'_> {
         }
         if self.message.has_thread() && !self.in_thread {
             let count = self.message.reply_count;
-            let plural = if count > 1 { "s" } else { "" };
+            let replies = if count == 1 { "reply" } else { "replies" };
             rows.push(vec![Span::styled(
-                format!("↳ {count} réponse{plural}"),
+                format!("↳ {count} {replies}"),
                 Style::new().fg(theme.link),
             )]);
         }
@@ -509,7 +509,7 @@ fn is_system(message: &Message) -> bool {
     )
 }
 
-/// A centered label between two rules: `──── Aujourd'hui ────`.
+/// A centered label between two rules: `──── Today ────`.
 pub fn separator(label: &str, width: usize, text: Color, rule: Color) -> Line<'static> {
     let label = format!(" {label} ");
     let rest = width.saturating_sub(label.width());
@@ -581,7 +581,7 @@ fn render_lines(
     loading: bool,
 ) -> Option<Viewport> {
     if loading && rendered.lines.is_empty() {
-        let text = Line::styled("chargement…", Style::new().fg(theme.muted)).centered();
+        let text = Line::styled("loading…", Style::new().fg(theme.muted)).centered();
         frame.render_widget(
             Paragraph::new(text),
             area.centered_vertically(Constraint::Length(1)),
@@ -589,11 +589,7 @@ fn render_lines(
         return None;
     }
     if rendered.lines.is_empty() {
-        let text = Line::styled(
-            "Aucun message pour l'instant.",
-            Style::new().fg(theme.muted),
-        )
-        .centered();
+        let text = Line::styled("No messages yet.", Style::new().fg(theme.muted)).centered();
         frame.render_widget(
             Paragraph::new(text),
             area.centered_vertically(Constraint::Length(1)),
@@ -649,7 +645,7 @@ pub fn sidebar(
     style: SidebarStyle,
 ) {
     if !app.channels_loaded {
-        let text = Line::styled("chargement…", Style::new().fg(theme.muted));
+        let text = Line::styled("loading…", Style::new().fg(theme.muted));
         frame.render_widget(Paragraph::new(text), area);
         return;
     }
@@ -709,15 +705,15 @@ fn epoch_of(ts: &str) -> Option<i64> {
     ts.split('.').next()?.parse().ok().filter(|&secs| secs > 0)
 }
 
-/// `Canaux │ Privés`, the active tab underlined, the other one badged when
+/// `Channels │ DMs`, the active tab underlined, the other one badged when
 /// it holds unread conversations.
 fn tab_bar(app: &App, theme: &Theme, width: usize) -> Vec<Line<'static>> {
     let mut labels = Vec::new();
     let mut rule = Vec::new();
     let mut used = 0;
     for (tab, name) in [
-        (SidebarTab::Channels, "Canaux"),
-        (SidebarTab::Direct, "Privés"),
+        (SidebarTab::Channels, "Channels"),
+        (SidebarTab::Direct, "DMs"),
     ] {
         if tab == SidebarTab::Direct {
             labels.push(Span::styled(" │", Style::new().fg(theme.border)));
@@ -974,14 +970,14 @@ pub fn status_bar(
     let muted = Style::new().fg(theme.muted);
     let (mode, mode_bg) = match app.mode {
         Mode::Normal => (" NORMAL ", theme.accent),
-        Mode::Insert => (" INSERTION ", theme.link),
+        Mode::Insert => (" INSERT ", theme.link),
     };
     let mut crumbs = format!("  {}", app.team_name);
     if let Some(channel) = app.current_channel() {
         crumbs.push_str(&format!(" › {}", app.channel_label(channel)));
     }
     if app.thread.is_some() {
-        crumbs.push_str(" › fil");
+        crumbs.push_str(" › thread");
     }
     let left = vec![
         Span::styled(mode, Style::new().fg(theme.on_accent).bg(mode_bg).bold()),
@@ -992,11 +988,13 @@ pub fn status_bar(
     let connection = match &app.connection {
         Connection::Connected => vec![
             Span::styled("●", Style::new().fg(theme.success)),
-            Span::styled(" connecté", muted),
+            Span::styled(" connected", muted),
         ],
-        Connection::Connecting => vec![Span::styled("◌ connexion…", Style::new().fg(theme.accent))],
+        Connection::Connecting => {
+            vec![Span::styled("◌ connecting…", Style::new().fg(theme.accent))]
+        }
         Connection::Reconnecting { in_secs, reason } => vec![Span::styled(
-            format!("◌ reconnexion dans {in_secs} s ({reason})"),
+            format!("◌ reconnecting in {in_secs}s ({reason})"),
             Style::new().fg(theme.accent),
         )],
     };
@@ -1037,40 +1035,36 @@ pub fn status_bar(
 
 fn hints(app: &App) -> Vec<(&'static str, &'static str)> {
     if app.mode == Mode::Insert {
-        return vec![
-            ("⏎", "envoyer"),
-            ("⇧⏎", "nouvelle ligne"),
-            ("esc", "terminer"),
-        ];
+        return vec![("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")];
     }
     let mut hints = match app.focus {
         Focus::Sidebar => vec![
-            ("j/k", "naviguer"),
-            ("⏎", "ouvrir / replier"),
-            ("←→", "canaux / privés"),
+            ("j/k", "move"),
+            ("⏎", "open / fold"),
+            ("←→", "channels / DMs"),
         ],
         Focus::Messages => vec![
-            ("j/k", "sélection"),
-            ("r", "réagir"),
-            ("o", "ouvrir"),
-            ("p", "lire"),
-            ("t", "fil"),
-            ("i", "écrire"),
+            ("j/k", "select"),
+            ("r", "react"),
+            ("o", "open"),
+            ("p", "play"),
+            ("t", "thread"),
+            ("i", "write"),
         ],
         Focus::Thread => vec![
-            ("j/k", "sélection"),
-            ("r", "réagir"),
-            ("o", "ouvrir"),
-            ("p", "lire"),
-            ("i", "répondre"),
-            ("esc", "fermer le fil"),
+            ("j/k", "select"),
+            ("r", "react"),
+            ("o", "open"),
+            ("p", "play"),
+            ("i", "reply"),
+            ("esc", "close thread"),
         ],
     };
     hints.extend([
-        ("^k", "aller à"),
-        ("/", "chercher"),
-        (",", "réglages"),
-        ("q", "quitter"),
+        ("^k", "go to"),
+        ("/", "search"),
+        (",", "settings"),
+        ("q", "quit"),
     ]);
     hints
 }

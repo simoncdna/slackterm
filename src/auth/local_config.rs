@@ -18,7 +18,7 @@ struct LocalTeam {
 
 pub fn tokens_from_local_config(json: &str) -> Result<Vec<String>> {
     let config: LocalConfig =
-        serde_json::from_str(json).context("localConfig_v2 n'est pas au format attendu")?;
+        serde_json::from_str(json).context("localConfig_v2 is not in the expected format")?;
     Ok(config
         .teams
         .into_values()

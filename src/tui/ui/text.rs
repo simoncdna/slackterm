@@ -103,20 +103,20 @@ pub fn format_duration(milliseconds: u64) -> String {
     }
 }
 
-/// `512 o`, `680 Ko`, `10,7 Mo`, `1,2 Go`.
+/// `512 B`, `680 KB`, `10.7 MB`, `1.2 GB`.
 pub fn format_size(bytes: u64) -> String {
     const KB: f64 = 1000.0;
     let bytes_f = bytes as f64;
     let (value, unit) = if bytes_f < KB {
-        return format!("{bytes} o");
+        return format!("{bytes} B");
     } else if bytes_f < KB * KB {
-        return format!("{} Ko", (bytes_f / KB).round());
+        return format!("{} KB", (bytes_f / KB).round());
     } else if bytes_f < KB * KB * KB {
-        (bytes_f / KB / KB, "Mo")
+        (bytes_f / KB / KB, "MB")
     } else {
-        (bytes_f / KB / KB / KB, "Go")
+        (bytes_f / KB / KB / KB, "GB")
     };
-    format!("{value:.1} {unit}").replace('.', ",")
+    format!("{value:.1} {unit}")
 }
 
 /// Left-aligns `text` in `width` columns, cutting it if needed.
@@ -148,70 +148,75 @@ pub fn local_time(epoch_seconds: i64) -> DateTime<Local> {
 }
 
 const WEEKDAYS: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
 ];
 const MONTHS: [&str; 12] = [
-    "janvier",
-    "février",
-    "mars",
-    "avril",
-    "mai",
-    "juin",
-    "juillet",
-    "août",
-    "septembre",
-    "octobre",
-    "novembre",
-    "décembre",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ];
 
 pub fn day_label(day: NaiveDate, today: NaiveDate) -> String {
     if day == today {
-        return "Aujourd'hui".to_string();
+        return "Today".to_string();
     }
     if today.pred_opt() == Some(day) {
-        return "Hier".to_string();
+        return "Yesterday".to_string();
     }
     let weekday = WEEKDAYS[day.weekday().num_days_from_monday() as usize];
     let month = MONTHS[day.month0() as usize];
     if day.year() == today.year() {
-        format!("{weekday} {} {month}", day.day())
+        format!("{weekday}, {month} {}", day.day())
     } else {
-        format!("{weekday} {} {month} {}", day.day(), day.year())
+        format!("{weekday}, {month} {}, {}", day.day(), day.year())
     }
 }
 
 const SHORT_MONTHS: [&str; 12] = [
-    "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.",
-    "déc.",
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
-/// `10:02` today, `8 oct. 10:02` this year, `8 oct. 2025` before.
+/// `10:02` today, `Oct 8 10:02` this year, `Oct 8, 2025` before.
 pub fn short_datetime(time: DateTime<Local>, today: NaiveDate) -> String {
     let day = time.date_naive();
     let month = SHORT_MONTHS[day.month0() as usize];
     if day == today {
         time.format("%H:%M").to_string()
     } else if day.year() == today.year() {
-        format!("{} {month} {}", day.day(), time.format("%H:%M"))
+        format!("{month} {} {}", day.day(), time.format("%H:%M"))
     } else {
-        format!("{} {month} {}", day.day(), day.year())
+        format!("{month} {}, {}", day.day(), day.year())
     }
 }
 
-const SHORT_WEEKDAYS: [&str; 7] = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
+const SHORT_WEEKDAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-/// How long ago a conversation was active: `14:02`, `hier`, `lun.`,
-/// `8 oct.`, then `déc. 2025`.
+/// How long ago a conversation was active: `14:02`, `yesterday`, `Mon`,
+/// `Oct 8`, then `Dec 2025`.
 pub fn recency_label(time: DateTime<Local>, today: NaiveDate) -> String {
     let day = time.date_naive();
     let days_ago = (today - day).num_days();
     let month = SHORT_MONTHS[day.month0() as usize];
     match days_ago {
         ..=0 => time.format("%H:%M").to_string(),
-        1 => "hier".to_string(),
+        1 => "yesterday".to_string(),
         2..=6 => SHORT_WEEKDAYS[day.weekday().num_days_from_monday() as usize].to_string(),
-        _ if day.year() == today.year() => format!("{} {month}", day.day()),
+        _ if day.year() == today.year() => format!("{month} {}", day.day()),
         _ => format!("{month} {}", day.year()),
     }
 }
@@ -245,8 +250,8 @@ mod tests {
 
     #[test]
     fn wraps_on_words() {
-        let rows = wrap(&[("le déploiement est passé".into(), Style::new())], 12);
-        assert_eq!(plain(&rows), ["le ", "déploiement ", "est passé"]);
+        let rows = wrap(&[("the deployment went out".into(), Style::new())], 12);
+        assert_eq!(plain(&rows), ["the ", "deployment ", "went out"]);
     }
 
     #[test]
@@ -277,8 +282,8 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
         let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 10, 2, 0).single().unwrap();
         assert_eq!(short_datetime(at(2026, 10, 8), today), "10:02");
-        assert_eq!(short_datetime(at(2026, 3, 2), today), "2 mars 10:02");
-        assert_eq!(short_datetime(at(2025, 12, 1), today), "1 déc. 2025");
+        assert_eq!(short_datetime(at(2026, 3, 2), today), "Mar 2 10:02");
+        assert_eq!(short_datetime(at(2025, 12, 1), today), "Dec 1, 2025");
     }
 
     #[test]
@@ -286,10 +291,10 @@ mod tests {
         let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
         let at = |y, m, d| Local.with_ymd_and_hms(y, m, d, 14, 2, 0).single().unwrap();
         assert_eq!(recency_label(at(2026, 10, 8), today), "14:02");
-        assert_eq!(recency_label(at(2026, 10, 7), today), "hier");
-        assert_eq!(recency_label(at(2026, 10, 5), today), "lun.");
-        assert_eq!(recency_label(at(2026, 9, 2), today), "2 sept.");
-        assert_eq!(recency_label(at(2025, 12, 1), today), "déc. 2025");
+        assert_eq!(recency_label(at(2026, 10, 7), today), "yesterday");
+        assert_eq!(recency_label(at(2026, 10, 5), today), "Mon");
+        assert_eq!(recency_label(at(2026, 9, 2), today), "Sep 2");
+        assert_eq!(recency_label(at(2025, 12, 1), today), "Dec 2025");
     }
 
     #[test]
@@ -297,10 +302,10 @@ mod tests {
         assert_eq!(format_duration(19_686), "0:19");
         assert_eq!(format_duration(725_000), "12:05");
         assert_eq!(format_duration(3_723_000), "1:02:03");
-        assert_eq!(format_size(512), "512 o");
-        assert_eq!(format_size(680_400), "680 Ko");
-        assert_eq!(format_size(10_747_897), "10,7 Mo");
-        assert_eq!(format_size(1_234_000_000), "1,2 Go");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(680_400), "680 KB");
+        assert_eq!(format_size(10_747_897), "10.7 MB");
+        assert_eq!(format_size(1_234_000_000), "1.2 GB");
     }
 
     #[test]
@@ -317,13 +322,13 @@ mod tests {
     }
 
     #[test]
-    fn labels_days_in_french() {
+    fn labels_days() {
         let today = NaiveDate::from_ymd_opt(2026, 10, 8).unwrap();
-        assert_eq!(day_label(today, today), "Aujourd'hui");
-        assert_eq!(day_label(today.pred_opt().unwrap(), today), "Hier");
+        assert_eq!(day_label(today, today), "Today");
+        assert_eq!(day_label(today.pred_opt().unwrap(), today), "Yesterday");
         let monday = NaiveDate::from_ymd_opt(2026, 10, 5).unwrap();
-        assert_eq!(day_label(monday, today), "lundi 5 octobre");
+        assert_eq!(day_label(monday, today), "Monday, October 5");
         let older = NaiveDate::from_ymd_opt(2025, 12, 31).unwrap();
-        assert_eq!(day_label(older, today), "mercredi 31 décembre 2025");
+        assert_eq!(day_label(older, today), "Wednesday, December 31, 2025");
     }
 }

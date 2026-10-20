@@ -36,7 +36,7 @@ pub async fn run(session: Session) -> Result<()> {
     let workspace = session
         .workspaces
         .first()
-        .context("aucun workspace enregistré, relance `slackterm login`")?;
+        .context("no saved workspace, run `slackterm login` again")?;
     let client = SlackClient::new(DEFAULT_API_BASE, &workspace.token, &session.cookie_d)?;
     let (settings, settings_error) = match Settings::load() {
         Ok(settings) => (settings, None),
@@ -183,9 +183,9 @@ async fn play(
     terminal_events: &TerminalEvents,
 ) -> Result<(), String> {
     let mpv = executor::in_path("mpv")
-        .ok_or("pour lire dans le terminal, installe mpv : brew install mpv yt-dlp")?;
+        .ok_or("to play videos in the terminal, install mpv: https://mpv.io")?;
     if player::is_link(target) && executor::in_path("yt-dlp").is_none() {
-        return Err("pour lire les liens vidéo, installe yt-dlp : brew install yt-dlp".into());
+        return Err("to play video links, install yt-dlp: https://github.com/yt-dlp/yt-dlp".into());
     }
     let term = std::env::var("TERM").unwrap_or_default();
     let output = player::video_output(std::env::var_os("TMUX").is_some(), &term);
@@ -209,11 +209,11 @@ async fn play(
     terminal_events.resume();
     // Pictures sent to the terminal may be gone after the screen switch.
     screen.pictures.forget();
-    resumed.map_err(|e| format!("terminal non restauré : {e}"))?;
+    resumed.map_err(|e| format!("terminal not restored: {e}"))?;
 
     match status {
         Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(format!("mpv s'est arrêté ({status})")),
-        Err(e) => Err(format!("impossible de lancer mpv : {e}")),
+        Ok(status) => Err(format!("mpv stopped ({status})")),
+        Err(e) => Err(format!("could not launch mpv: {e}")),
     }
 }

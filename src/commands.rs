@@ -24,27 +24,27 @@ pub async fn login(store: &dyn SessionStore, api_base: &str, options: LoginOptio
     let (session, rejected) = verify(api_base, raw).await?;
     store
         .save(&session)
-        .context("impossible d'enregistrer la session dans le trousseau")?;
+        .context("could not save the session to the system keychain")?;
 
     for error in rejected {
-        eprintln!("⚠ workspace ignoré : {error}");
+        eprintln!("⚠ skipped workspace: {error}");
     }
     for workspace in &session.workspaces {
         println!(
-            "✓ Connecté : {} @ {}",
+            "✓ Signed in: {} @ {}",
             workspace.user_name, workspace.team_name
         );
     }
-    println!("  Identifiants enregistrés dans le trousseau.");
+    println!("  Credentials saved to the system keychain.");
     Ok(())
 }
 
 async fn capture_from_browser(options: LoginOptions) -> Result<RawCredentials> {
     let executable = options.browser.or_else(browser::find_browser).context(
-        "aucun navigateur compatible trouvé (Chrome, Chromium, Brave, Edge). \
-         Indique son chemin avec --browser, ou utilise --manual",
+        "no compatible browser found (Chrome, Chromium, Brave, Edge). \
+         Pass its path with --browser, or use --manual",
     )?;
-    println!("→ Ouverture du navigateur… connecte-toi à ton workspace Slack.");
+    println!("→ Opening your browser… sign in to your Slack workspace.");
     browser::capture(&executable, &profile_dir()?, options.timeout).await
 }
 
@@ -52,7 +52,7 @@ async fn capture_from_browser(options: LoginOptions) -> Result<RawCredentials> {
 /// usually only needs a click to renew.
 fn profile_dir() -> Result<PathBuf> {
     let dirs = directories::ProjectDirs::from("", "", "slackterm")
-        .context("impossible de déterminer le dossier de données")?;
+        .context("could not find the data directory")?;
     Ok(dirs.data_dir().join("browser-profile"))
 }
 
@@ -80,10 +80,7 @@ pub async fn verify(api_base: &str, raw: RawCredentials) -> Result<(Session, Vec
 
     if workspaces.is_empty() {
         let reasons: Vec<String> = rejected.iter().map(ToString::to_string).collect();
-        bail!(
-            "aucun workspace n'a pu être vérifié ({})",
-            reasons.join(", ")
-        );
+        bail!("no workspace could be verified ({})", reasons.join(", "));
     }
     Ok((
         Session {
@@ -96,16 +93,16 @@ pub async fn verify(api_base: &str, raw: RawCredentials) -> Result<(Session, Vec
 
 pub fn logout(store: &dyn SessionStore) -> Result<()> {
     if store.clear()? {
-        println!("Identifiants effacés du trousseau.");
+        println!("Credentials deleted from the system keychain.");
     } else {
-        println!("Aucun identifiant enregistré.");
+        println!("No saved credentials.");
     }
     Ok(())
 }
 
 pub async fn status(store: &dyn SessionStore, api_base: &str) -> Result<()> {
     let Some(session) = store.load()? else {
-        println!("Pas connecté. Lance `slackterm login`.");
+        println!("Not signed in. Run `slackterm login`.");
         return Ok(());
     };
 
@@ -115,9 +112,9 @@ pub async fn status(store: &dyn SessionStore, api_base: &str) -> Result<()> {
         match client.auth_test().await {
             Ok(_) => println!("✓ {who} ({})", workspace.url),
             Err(SlackError::Api(reason)) => {
-                println!("✕ {who} : session refusée ({reason}). Relance `slackterm login`.")
+                println!("✕ {who}: session rejected ({reason}). Run `slackterm login` again.")
             }
-            Err(e) => println!("? {who} : {e}"),
+            Err(e) => println!("? {who}: {e}"),
         }
     }
     Ok(())

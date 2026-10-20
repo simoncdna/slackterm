@@ -9,7 +9,7 @@ Sleep 1.5s
 Show
 Sleep 1s
 
-# Fold the "Lancement v2" section: unread conversations stay visible.
+# Fold the "v2 launch" section: unread conversations stay visible.
 Type@220ms "kkkkkkkk"
 Sleep 600ms
 Enter

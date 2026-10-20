@@ -24,7 +24,7 @@ Type "t"
 Sleep 1.4s
 Type "i"
 Sleep 300ms
-Type@45ms "Oui ! Je les envoie demain matin :memo:"
+Type@45ms "Yes! I'll send them tomorrow morning :memo:"
 Sleep 500ms
 Enter
 Sleep 2.6s
@@ -42,7 +42,7 @@ Enter
 Sleep 1.2s
 Type "i"
 Sleep 300ms
-Type@45ms "Je regarde le déroulé tout de suite :eyes:"
+Type@45ms "Taking a look at the run-through now :eyes:"
 Sleep 400ms
 Enter
 Sleep 3.6s

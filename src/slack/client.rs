@@ -14,11 +14,11 @@ const MAX_RATE_LIMIT_RETRIES: u32 = 3;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SlackError {
-    #[error("erreur réseau : {0}")]
+    #[error("network error: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("réponse illisible : {0}")]
+    #[error("unreadable response: {0}")]
     Decode(#[from] serde_json::Error),
-    #[error("Slack a refusé la requête : {0}")]
+    #[error("Slack rejected the request: {0}")]
     Api(String),
 }
 
@@ -241,7 +241,7 @@ impl SlackClient {
     /// never leaves for another site.
     pub async fn download(&self, url: &str) -> Result<reqwest::Response, SlackError> {
         if !is_slack_file_url(url) {
-            return Err(SlackError::Api(format!("adresse hors de Slack : {url}")));
+            return Err(SlackError::Api(format!("not a Slack address: {url}")));
         }
         Ok(self
             .http

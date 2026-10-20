@@ -84,7 +84,7 @@ pub fn video_links(message: &Message) -> Vec<VideoLink> {
                 }),
             };
             Some(VideoLink {
-                service: card.service_name.clone().unwrap_or_else(|| "Vidéo".into()),
+                service: card.service_name.clone().unwrap_or_else(|| "Video".into()),
                 title: card.title.clone(),
                 author: card.author_name.clone(),
                 url,
@@ -180,7 +180,7 @@ mod tests {
         let mut msg = message(
             "1.0",
             "U1",
-            "<https://youtu.be/dQw4w9WgXcQ> et <https://youtu.be/aaaaaaaaaaa>",
+            "<https://youtu.be/dQw4w9WgXcQ> and <https://youtu.be/aaaaaaaaaaa>",
         );
         msg.attachments.push(Attachment {
             service_name: Some("YouTube".into()),
@@ -214,6 +214,6 @@ mod tests {
                 .unwrap(),
         );
         assert_eq!(playable(&msg), Some(Playable::File(0)));
-        assert!(playable(&message("1.0", "U1", "rien")).is_none());
+        assert!(playable(&message("1.0", "U1", "nothing")).is_none());
     }
 }

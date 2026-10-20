@@ -51,10 +51,10 @@ pub struct Scheduled {
 /// What the other member of a direct message answers to the user.
 pub fn reply_from(user: &str) -> &'static str {
     match user {
-        CAMILLE => "Top, merci ! Dis-moi s'il manque quelque chose :raised_hands:",
-        HUGO => "Parfait, je t'appelle dans 5 min :telephone_receiver:",
-        INES => "Super, je t'envoie les fichiers :art:",
-        _ => "Bien reçu :+1:",
+        CAMILLE => "Great, thanks! Let me know if anything's missing :raised_hands:",
+        HUGO => "Perfect, I'll call you in 5 :telephone_receiver:",
+        INES => "Awesome, sending you the files :art:",
+        _ => "Got it :+1:",
     }
 }
 
@@ -133,23 +133,23 @@ fn conversations() -> Vec<Conversation> {
     let channel = |id: &str, name: &str, topic: &str| json!({"id": id, "name": name, "topic": {"value": topic}});
     let direct = |id: &str, user: &str| json!({"id": id, "is_im": true, "user": user});
     [
-        channel(GENERAL, "general", "Vie de l'équipe et annonces 📣"),
+        channel(GENERAL, "general", "Team life and announcements 📣"),
         channel(
             RELEASE,
             "release-2-0",
-            "Lancement de la v2.0 · démo jeudi 14h · checklist épinglée",
+            "v2.0 launch · demo Thursday 2pm · checklist pinned",
         ),
         channel(
             DEPLOYS,
             "deploys",
-            "Déploiements automatiques, staging et production",
+            "Automatic deploys, staging and production",
         ),
-        channel(DEV, "dev", "Questions techniques et revues de code"),
-        channel(DESIGN, "design", "Maquettes, retours et inspiration"),
-        channel(RANDOM, "random", "Tout le reste 🦆"),
+        channel(DEV, "dev", "Tech questions and code reviews"),
+        channel(DESIGN, "design", "Mockups, feedback and inspiration"),
+        channel(RANDOM, "random", "Everything else 🦆"),
         json!({
-            "id": PRODUCT, "name": "produit", "is_private": true,
-            "topic": {"value": "Roadmap et priorités"},
+            "id": PRODUCT, "name": "product", "is_private": true,
+            "topic": {"value": "Roadmap and priorities"},
         }),
         direct(DM_CAMILLE, CAMILLE),
         direct(DM_HUGO, HUGO),
@@ -175,13 +175,13 @@ fn sections() -> Vec<ChannelSection> {
         section(
             "S1",
             "standard",
-            "Lancement v2",
+            "v2 launch",
             "rocket",
             &[RELEASE, DEPLOYS, PRODUCT],
         ),
-        section("S2", "stars", "Favoris", "star", &[DEV]),
+        section("S2", "stars", "Starred", "star", &[DEV]),
         section("S3", "channels", "", "", &[]),
-        section("S4", "standard", "Détente", "palm_tree", &[RANDOM]),
+        section("S4", "standard", "Chill", "palm_tree", &[RANDOM]),
         section("S5", "direct_messages", "", "", &[]),
     ]
 }
@@ -213,14 +213,14 @@ fn general(b: &mut Builder) {
         GENERAL,
         b.day(2, 9, 15),
         CAMILLE,
-        "Lundi, <@U04NAT> rejoint l'équipe mobile : réservez-lui un bel accueil :wave:",
+        "<@U04NAT> joins the mobile team on Monday, give him a warm welcome :wave:",
     );
     b.react(&welcome, "wave", &[HUGO, INES, SARAH]);
     let figures = b.post(
         GENERAL,
         b.day(2, 14, 30),
         SARAH,
-        "Les chiffres de septembre sont dans le drive : +18 % d'utilisateurs actifs \
+        "September numbers are in the drive: +18% active users \
          :chart_with_upwards_trend:",
     );
     b.react(&figures, "tada", &[CAMILLE, HUGO, ME]);
@@ -228,7 +228,7 @@ fn general(b: &mut Builder) {
         GENERAL,
         b.day(1, 9, 2),
         SARAH,
-        "Bonjour à tous :wave: le nouveau site est en ligne : \
+        "Morning all :wave: the new website is live: \
          <https://atelier-nova.fr|atelier-nova.fr>",
     );
     b.react(&site, "tada", &[CAMILLE, HUGO, NATHAN]);
@@ -237,14 +237,14 @@ fn general(b: &mut Builder) {
         GENERAL,
         b.day(1, 9, 30),
         NATHAN,
-        "<@U04NAT> a rejoint le canal",
+        "<@U04NAT> has joined the channel",
     );
     b.message(&joined).subtype = Some("channel_join".into());
     let lunch = b.post(
         GENERAL,
         b.day(1, 11, 48),
         HUGO,
-        "Qui est chaud pour l'italien ce midi ? :pizza:",
+        "Who's up for Italian for lunch? :pizza:",
     );
     b.react(&lunch, "raising_hand", &[CAMILLE, ME, NATHAN]);
 
@@ -252,8 +252,8 @@ fn general(b: &mut Builder) {
         GENERAL,
         b.ago(190),
         CAMILLE,
-        "Rappel : démo de la v2 jeudi à 14h devant toute l'équipe :rocket: \
-         le déroulé est dans <#C02REL|release-2-0>",
+        "Reminder: v2 demo Thursday at 2pm for the whole team :rocket: \
+         the run-through is in <#C02REL|release-2-0>",
     );
     b.react(&demo, "rocket", &[HUGO, INES, NATHAN, SARAH]);
     b.react(&demo, "+1", &[ME]);
@@ -261,34 +261,39 @@ fn general(b: &mut Builder) {
         GENERAL,
         b.ago(187),
         NATHAN,
-        "Hâte ! La build iOS part en TestFlight ce soir :sparkles:",
+        "Can't wait! The iOS build goes out to TestFlight tonight :sparkles:",
     );
     let stickers = b.post(
         GENERAL,
         b.ago(120),
         INES,
-        "Petite nouveauté : on a enfin des stickers de l'atelier :art: passez me voir",
+        "Fun news: we finally have Atelier Nova stickers :art: come grab some",
     );
-    b.attach(&stickers, &["stickers-atelier.png"]);
+    b.attach(&stickers, &["nova-stickers.png"]);
     let blog = b.post(
         GENERAL,
         b.ago(42),
         SARAH,
-        "<!here> l'article de blog sur la v2 est prêt à relire : \
-         <https://docs.atelier-nova.fr/blog/v2|brouillon v2>",
+        "<!here> the v2 blog post is ready for review: \
+         <https://docs.atelier-nova.fr/blog/v2|v2 draft>",
     );
-    b.reply(&blog, b.ago(39), CAMILLE, "Je relis cet après-midi :eyes:");
+    b.reply(
+        &blog,
+        b.ago(39),
+        CAMILLE,
+        "I'll read it this afternoon :eyes:",
+    );
     b.reply(
         &blog,
         b.ago(20),
         ME,
-        "Super boulot ! Deux petites coquilles signalées en commentaire",
+        "Great work! Flagged two small typos in the comments",
     );
     let coffee = b.post(
         GENERAL,
         b.ago(8),
         HUGO,
-        "La machine à café du 3e est enfin réparée :tada:",
+        "The coffee machine on the 3rd floor is finally fixed :tada:",
     );
     b.react(&coffee, "100", &[INES, SARAH, ME]);
 }
@@ -298,46 +303,46 @@ fn release(b: &mut Builder) {
         RELEASE,
         b.day(1, 16, 10),
         CAMILLE,
-        "Checklist de lancement v2.0 :clipboard:\n\
-         • Notes de version — <@U0ME>\n\
-         • Build Android signée — <@U04NAT>\n\
-         • Migration de la base — <@U02HUG>\n\
-         • Visuels des stores — <@U03INE>",
+        "v2.0 launch checklist :clipboard:\n\
+         • Release notes — <@U0ME>\n\
+         • Signed Android build — <@U04NAT>\n\
+         • Database migration — <@U02HUG>\n\
+         • Store visuals — <@U03INE>",
     );
     b.react(&checklist, "white_check_mark", &[HUGO, NATHAN, INES]);
     let migration = b.post(
         RELEASE,
         b.day(1, 16, 45),
         HUGO,
-        "Pour la migration, je propose de la lancer mercredi soir :\n\
+        "For the migration, I suggest we run it Wednesday night:\n\
          ```cargo run --bin migrate -- --env prod --dry-run```\n\
-         Le dry-run passe sur la copie de prod :white_check_mark:",
+         The dry run passes on the prod copy :white_check_mark:",
     );
     b.react(&migration, "+1", &[CAMILLE, ME]);
     b.reply(
         &migration,
         b.day(1, 16, 52),
         CAMILLE,
-        "Mercredi soir ça me va. On prévient le support ?",
+        "Wednesday night works for me. Should we give support a heads-up?",
     );
     b.reply(
         &migration,
         b.day(1, 16, 55),
         HUGO,
-        "Oui, je leur écris demain matin",
+        "Yep, I'll email them tomorrow morning",
     );
     b.reply(
         &migration,
         b.day(1, 17, 20),
         NATHAN,
-        "Pensez à couper les notifications push pendant la migration :pray:",
+        "Remember to turn off push notifications during the migration :pray:",
     );
 
     let visuals = b.post(
         RELEASE,
         b.ago(150),
         INES,
-        "Les visuels pour les stores sont prêts :sparkles:",
+        "The store visuals are ready :sparkles:",
     );
     b.attach(&visuals, &["store-ios.png", "store-android.png"]);
     b.react(&visuals, "heart_eyes", &[CAMILLE, SARAH]);
@@ -346,15 +351,15 @@ fn release(b: &mut Builder) {
         RELEASE,
         b.ago(60),
         NATHAN,
-        "La build Android est signée et partie en revue sur le Play Store :robot_face:",
+        "The Android build is signed and submitted for Play Store review :robot_face:",
     );
     b.react(&android, "raised_hands", &[CAMILLE, HUGO]);
     b.post(
         RELEASE,
         b.ago(25),
         CAMILLE,
-        "<@U0ME> il ne manque plus que les notes de version, \
-         tu penses les avoir pour demain ? :pray:",
+        "<@U0ME> the release notes are the only thing left, \
+         think you can have them by tomorrow? :pray:",
     );
 }
 
@@ -362,12 +367,12 @@ fn deploys(b: &mut Builder) {
     b.bot(
         DEPLOYS,
         b.day(1, 11, 2),
-        ":white_check_mark: `v1.9.4` déployé en production (2 min 10 s)",
+        ":white_check_mark: `v1.9.4` deployed to production (2m 10s)",
     );
     let failed = b.bot(
         DEPLOYS,
         b.day(1, 18, 31),
-        ":x: `v2.0.0-rc.2` : échec des tests d'intégration sur staging · \
+        ":x: `v2.0.0-rc.2`: integration tests failed on staging · \
          <https://ci.atelier-nova.fr/runs/4182|run #4182>",
     );
     b.react(&failed, "eyes", &[HUGO]);
@@ -375,18 +380,18 @@ fn deploys(b: &mut Builder) {
         &failed,
         b.day(1, 18, 40),
         HUGO,
-        "Un test instable sur le paiement, je corrige",
+        "Flaky payment test, fixing it",
     );
     b.reply(
         &failed,
         b.day(1, 19, 5),
         HUGO,
-        "Corrigé dans <https://github.com/atelier-nova/app/pull/482|#482> :wrench:",
+        "Fixed in <https://github.com/atelier-nova/app/pull/482|#482> :wrench:",
     );
     b.bot(
         DEPLOYS,
         b.ago(95),
-        ":white_check_mark: `v2.0.0-rc.3` déployé sur staging (3 min 42 s)",
+        ":white_check_mark: `v2.0.0-rc.3` deployed to staging (3m 42s)",
     );
 }
 
@@ -395,36 +400,36 @@ fn dev(b: &mut Builder) {
         DEV,
         b.day(1, 10, 15),
         NATHAN,
-        "Quelqu'un sait pourquoi `pod install` prend 10 minutes sur la CI ? :thinking_face:",
+        "Anyone know why `pod install` takes 10 minutes on CI? :thinking_face:",
     );
     b.reply(
         &pods,
         b.day(1, 10, 31),
         HUGO,
-        "Le cache CocoaPods n'est pas restauré : la clé dépend du `Podfile.lock`",
+        "The CocoaPods cache isn't restored: the key depends on `Podfile.lock`",
     );
     b.reply(
         &pods,
         b.day(1, 10, 58),
         NATHAN,
-        "Bien vu, ça tombe à 40 s :zap:",
+        "Good catch, down to 40s :zap:",
     );
     let pr = b.post(
         DEV,
         b.day(1, 15, 40),
         HUGO,
-        "PR de la migration prête pour relecture : \
-         <https://github.com/atelier-nova/app/pull/478|#478 Migration des comptes vers le nouveau schéma>",
+        "Migration PR ready for review: \
+         <https://github.com/atelier-nova/app/pull/478|#478 Move accounts to the new schema>",
     );
     b.react(&pr, "eyes", &[ME]);
     let review = b.post(
         DEV,
         b.ago(70),
         ME,
-        "Relue et approuvée :white_check_mark: juste une remarque sur l'index de `accounts.email`",
+        "Reviewed and approved :white_check_mark: just one comment on the `accounts.email` index",
     );
     b.message(&review).edited = Some(json!({"user": ME}));
-    let fixed = b.post(DEV, b.ago(66), HUGO, "Merci ! Corrigé :+1:");
+    let fixed = b.post(DEV, b.ago(66), HUGO, "Thanks! Fixed :+1:");
     b.react(&fixed, "raised_hands", &[ME]);
 }
 
@@ -433,25 +438,25 @@ fn design(b: &mut Builder) {
         DESIGN,
         b.day(1, 14, 0),
         INES,
-        "Nouvelle palette pour l'écran d'accueil :art:",
+        "New palette for the home screen :art:",
     );
-    b.attach(&palette, &["accueil-v2.fig"]);
+    b.attach(&palette, &["home-v2.fig"]);
     b.react(&palette, "heart", &[CAMILLE, SARAH]);
     let onboarding = b.post(
         DESIGN,
         b.ago(35),
         INES,
-        "J'ai mis à jour les maquettes de l'onboarding après les tests utilisateurs",
+        "I updated the onboarding mockups after user testing",
     );
     b.attach(&onboarding, &["onboarding-v3.fig"]);
     b.post(
         DESIGN,
         b.ago(33),
         INES,
-        "Les principaux changements :\n\
-         1. un écran de moins\n\
-         2. le bouton « Passer » est plus visible\n\
-         3. des illustrations plus légères",
+        "The main changes:\n\
+         1. one less screen\n\
+         2. the “Skip” button stands out more\n\
+         3. lighter illustrations",
     );
 }
 
@@ -460,22 +465,22 @@ fn random(b: &mut Builder) {
         RANDOM,
         b.day(2, 17, 0),
         NATHAN,
-        "Jeux de société vendredi après le boulot ? :game_die:",
+        "Board games Friday after work? :game_die:",
     );
     b.react(&games, "+1", &[HUGO, SARAH, INES]);
     let photo = b.post(
         RANDOM,
         b.day(1, 13, 10),
         SARAH,
-        "La photo de l'équipe au resto :spaghetti:",
+        "Team photo from dinner :spaghetti:",
     );
-    b.attach(&photo, &["resto.jpg"]);
+    b.attach(&photo, &["team-dinner.jpg"]);
     b.react(&photo, "heart", &[CAMILLE, INES, NATHAN]);
     let duck = b.post(
         RANDOM,
         b.ago(15),
         HUGO,
-        "Le canard en plastique de mon bureau vient de résoudre un bug :duck:",
+        "The rubber duck on my desk just solved a bug :duck:",
     );
     b.react(&duck, "joy", &[NATHAN, INES]);
 }
@@ -485,19 +490,19 @@ fn product(b: &mut Builder) {
         PRODUCT,
         b.day(1, 11, 0),
         CAMILLE,
-        "Roadmap T4 : on priorise le mode hors-ligne, puis les widgets :dart:",
+        "Q4 roadmap: offline mode first, then widgets :dart:",
     );
     b.reply(
         &roadmap,
         b.day(1, 11, 20),
         SARAH,
-        "Ça colle avec les retours clients :+1:",
+        "Lines up with customer feedback :+1:",
     );
     b.post(
         PRODUCT,
         b.ago(80),
         CAMILLE,
-        "Le point produit est déplacé à 16h aujourd'hui",
+        "Today's product sync moved to 4pm",
     );
 }
 
@@ -506,51 +511,46 @@ fn direct(b: &mut Builder) {
         DM_CAMILLE,
         b.day(1, 18, 2),
         CAMILLE,
-        "Merci pour ton aide sur la checklist :pray:",
+        "Thanks for your help with the checklist :pray:",
     );
-    b.post(DM_CAMILLE, b.day(1, 18, 5), ME, "Avec plaisir !");
+    b.post(DM_CAMILLE, b.day(1, 18, 5), ME, "Anytime!");
     b.post(
         DM_CAMILLE,
         b.ago(12),
         CAMILLE,
-        "Tu as 5 minutes pour regarder le déroulé de la démo ?",
+        "Got 5 minutes to look over the demo run-through?",
     );
     b.post(
         DM_CAMILLE,
         b.ago(11),
         CAMILLE,
-        "C'est dans <#C02REL|release-2-0>, message épinglé :pushpin:",
+        "It's pinned in <#C02REL|release-2-0> :pushpin:",
     );
 
     b.post(
         DM_HUGO,
         b.ago(240),
         HUGO,
-        "Tu peux relire ma PR quand tu as un moment ?",
+        "Can you review my PR when you get a minute?",
     );
-    b.post(DM_HUGO, b.ago(72), ME, "C'est fait, approuvée :+1:");
+    b.post(DM_HUGO, b.ago(72), ME, "Done, approved :+1:");
 
     let icons = b.post(
         DM_INES,
         b.day(1, 10, 0),
         INES,
-        "Tu préfères quelle version de l'icône ?",
+        "Which version of the icon do you like best?",
     );
-    b.attach(&icons, &["icone-a.png", "icone-b.png"]);
-    b.post(
-        DM_INES,
-        b.day(1, 10, 20),
-        ME,
-        "La B, sans hésiter :heart_eyes:",
-    );
+    b.attach(&icons, &["icon-a.png", "icon-b.png"]);
+    b.post(DM_INES, b.day(1, 10, 20), ME, "B, no question :heart_eyes:");
 
     b.post(
         GROUP,
         b.day(2, 16, 0),
         NATHAN,
-        "On se cale une session de tests Android demain ?",
+        "Shall we book an Android testing session tomorrow?",
     );
-    b.post(GROUP, b.day(2, 16, 4), INES, "Go pour 10h :+1:");
+    b.post(GROUP, b.day(2, 16, 4), INES, "10am works :+1:");
 }
 
 fn live(b: &mut Builder) -> Vec<Scheduled> {
@@ -559,10 +559,10 @@ fn live(b: &mut Builder) -> Vec<Scheduled> {
         .get(RELEASE)
         .and_then(|list| {
             list.iter()
-                .find(|m| m.text.starts_with("Pour la migration"))
+                .find(|m| m.text.starts_with("For the migration"))
         })
         .map(|m| m.ts.clone());
-    let mut beta = message("", INES, "Je préviens aussi les testeurs de la bêta :bell:");
+    let mut beta = message("", INES, "I'll let the beta testers know too :bell:");
     beta.thread_ts = migration;
 
     let scheduled = |secs: u64, channel: &str, message: Message| Scheduled {
@@ -573,7 +573,7 @@ fn live(b: &mut Builder) -> Vec<Scheduled> {
     let mut deployed = message(
         "",
         "",
-        ":white_check_mark: `v2.0.0-rc.4` déployé sur staging (3 min 18 s)",
+        ":white_check_mark: `v2.0.0-rc.4` deployed to staging (3m 18s)",
     );
     deployed.user = None;
     deployed.username = Some(DEPLOY_BOT.into());
@@ -585,13 +585,13 @@ fn live(b: &mut Builder) -> Vec<Scheduled> {
             message(
                 "",
                 HUGO,
-                "Dispo pour un call de 5 min après le stand-up ? :telephone_receiver:",
+                "Free for a quick 5-min call after stand-up? :telephone_receiver:",
             ),
         ),
         scheduled(
             30,
             RANDOM,
-            message("", SARAH, "Qui vient au resto jeudi midi ? :ramen:"),
+            message("", SARAH, "Who's in for lunch out on Thursday? :ramen:"),
         ),
         scheduled(45, RELEASE, beta),
     ]

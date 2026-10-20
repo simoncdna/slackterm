@@ -153,9 +153,9 @@ mod tests {
 
     #[test]
     fn deletes_the_previous_word() {
-        let mut input = typed("salut tout le monde  ");
+        let mut input = typed("hello to all of you  ");
         input.delete_word();
-        assert_eq!(input.text(), "salut tout le ");
+        assert_eq!(input.text(), "hello to all of ");
     }
 
     #[test]

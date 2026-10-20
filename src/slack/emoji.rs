@@ -167,10 +167,10 @@ mod tests {
     #[test]
     fn replaces_shortcodes_in_text() {
         assert_eq!(
-            split("bravo :tada: :+1::skin-tone-2: et :pictaheart: !"),
+            split("nice :tada: :+1::skin-tone-2: and :pictaheart: !"),
             vec![
                 Piece::Text(format!(
-                    "bravo 🎉 {} et ",
+                    "nice 🎉 {} and ",
                     lookup("+1::skin-tone-2").unwrap()
                 )),
                 Piece::Custom("pictaheart".into()),
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn leaves_times_and_lone_colons_alone() {
-        let text = "rdv à 10:30 : ok, ratio 3:2";
+        let text = "meet at 10:30 : ok, ratio 3:2";
         assert_eq!(split(text), vec![Piece::Text(text.into())]);
     }
 }

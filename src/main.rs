@@ -12,7 +12,7 @@ use slackterm::store::{KeyringStore, SessionStore};
 #[command(
     name = "slackterm",
     version,
-    about = "Slack dans le terminal. Sans commande, ouvre l'interface."
+    about = "Slack in your terminal. With no command, opens the interface."
 )]
 struct Cli {
     #[command(subcommand)]
@@ -21,23 +21,23 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Se connecter à Slack via le navigateur
+    /// Sign in to Slack through your browser
     Login {
-        /// Saisir le token xoxc et le cookie d à la main
+        /// Paste the xoxc token and the d cookie yourself
         #[arg(long)]
         manual: bool,
-        /// Chemin vers l'exécutable du navigateur (Chrome, Chromium, Brave, Edge)
-        #[arg(long, value_name = "CHEMIN")]
+        /// Path to the browser executable (Chrome, Chromium, Brave, Edge)
+        #[arg(long, value_name = "PATH")]
         browser: Option<PathBuf>,
-        /// Délai maximum pour se connecter, en secondes
-        #[arg(long, value_name = "SECONDES", default_value_t = 300)]
+        /// How long to wait for you to sign in, in seconds
+        #[arg(long, value_name = "SECONDS", default_value_t = 300)]
         timeout: u64,
     },
-    /// Effacer les identifiants enregistrés
+    /// Delete the saved credentials
     Logout,
-    /// Afficher les workspaces enregistrés et vérifier la connexion
+    /// List the saved workspaces and check that their session is valid
     Status,
-    /// Essayer l'interface sur un workspace fictif, sans compte Slack
+    /// Try the interface on a made-up workspace, no Slack account needed
     Demo,
 }
 
@@ -56,7 +56,7 @@ async fn run() -> Result<()> {
         return match store.load()? {
             Some(session) => slackterm::tui::run(session).await,
             None => {
-                println!("Pas connecté. Lance `slackterm login`.");
+                println!("Not signed in. Run `slackterm login`.");
                 Ok(())
             }
         };

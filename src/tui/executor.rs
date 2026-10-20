@@ -26,7 +26,7 @@ pub fn execute(command: Command, client: &SlackClient, events: &UnboundedSender<
             Command::DownloadToPlay(file) => {
                 let event = match cached_file(&client, &file, &events).await {
                     Ok(path) => ApiEvent::PlayReady(path.to_string_lossy().into_owned()),
-                    Err(reason) => ApiEvent::Failed(format!("{} : {reason}", file.name)),
+                    Err(reason) => ApiEvent::Failed(format!("{}: {reason}", file.name)),
                 };
                 let _ = events.send(Event::Api(event));
                 return;
@@ -40,8 +40,8 @@ pub fn execute(command: Command, client: &SlackClient, events: &UnboundedSender<
             Command::OpenFiles(files) => {
                 for file in files {
                     let event = match open_file(&client, &file, &events).await {
-                        Ok(()) => ApiEvent::Notice(format!("ouvert : {}", file.name)),
-                        Err(reason) => ApiEvent::Failed(format!("{} : {reason}", file.name)),
+                        Ok(()) => ApiEvent::Notice(format!("opened: {}", file.name)),
+                        Err(reason) => ApiEvent::Failed(format!("{}: {reason}", file.name)),
                     };
                     let _ = events.send(Event::Api(event));
                 }
@@ -65,12 +65,12 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .users_list()
             .await
             .map(ApiEvent::Users)
-            .map_err(|e| format!("utilisateurs : {e}"))?,
+            .map_err(|e| format!("users: {e}"))?,
         Command::LoadConversations => client
             .user_conversations()
             .await
             .map(ApiEvent::Conversations)
-            .map_err(|e| format!("liste des canaux : {e}"))?,
+            .map_err(|e| format!("channel list: {e}"))?,
         Command::LoadCounts => match client.client_counts().await {
             Ok(counts) => ApiEvent::Counts(counts),
             Err(_) => ApiEvent::CountsUnavailable,
@@ -83,7 +83,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 messages: page.messages,
                 has_more: page.has_more,
             })
-            .map_err(|e| format!("historique : {e}"))?,
+            .map_err(|e| format!("history: {e}"))?,
         Command::LoadOlder { channel, before } => client
             .conversations_history(&channel, Some(&before), 200)
             .await
@@ -92,7 +92,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 messages: page.messages,
                 has_more: page.has_more,
             })
-            .map_err(|e| format!("historique : {e}"))?,
+            .map_err(|e| format!("history: {e}"))?,
         // The default sections stay if the user's cannot be read.
         Command::LoadSections => match client.channel_sections().await {
             Ok(sections) => ApiEvent::Sections(sections),
@@ -113,7 +113,7 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
                 ts,
                 messages,
             })
-            .map_err(|e| format!("fil : {e}"))?,
+            .map_err(|e| format!("thread: {e}"))?,
         Command::Send {
             channel,
             text,
@@ -122,12 +122,12 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .chat_post_message(&channel, &text, thread_ts.as_deref())
             .await
             .map(|message| ApiEvent::Sent { channel, message })
-            .map_err(|e| format!("envoi : {e}"))?,
+            .map_err(|e| format!("send: {e}"))?,
         Command::MarkRead { channel, ts } => {
             client
                 .conversations_mark(&channel, &ts)
                 .await
-                .map_err(|e| format!("marquer comme lu : {e}"))?;
+                .map_err(|e| format!("mark as read: {e}"))?;
             return Ok(None);
         }
         // Several events each: answered in `execute`.
@@ -174,11 +174,11 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
         Command::SaveSidebar(state) => {
             state
                 .save()
-                .map_err(|e| format!("barre latérale : {e:#}"))?;
+                .map_err(|e| format!("sidebar: {e:#}"))?;
             return Ok(None);
         }
         Command::SaveSettings(settings) => {
-            settings.save().map_err(|e| format!("réglages : {e:#}"))?;
+            settings.save().map_err(|e| format!("settings: {e:#}"))?;
             return Ok(None);
         }
     };
@@ -276,7 +276,7 @@ async fn open_file(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .map_err(|e| format!("impossible de lancer {program} : {e}"))?;
+        .map_err(|e| format!("could not launch {program}: {e}"))?;
     Ok(())
 }
 
@@ -286,8 +286,8 @@ async fn cached_file(
     file: &FileToOpen,
     events: &UnboundedSender<Event>,
 ) -> Result<PathBuf, String> {
-    let dirs = directories::ProjectDirs::from("", "", "slackterm")
-        .ok_or("dossier de cache introuvable")?;
+    let dirs =
+        directories::ProjectDirs::from("", "", "slackterm").ok_or("cache directory not found")?;
     let path = dirs
         .cache_dir()
         .join("files")
@@ -302,7 +302,7 @@ async fn cached_file(
 /// could make the system run a program.
 fn open_url(url: &str) -> Result<(), String> {
     if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err(format!("lien non web ignoré : {url}"));
+        return Err(format!("ignored a non-web link: {url}"));
     }
     let program = if cfg!(target_os = "macos") {
         "open"
@@ -316,7 +316,7 @@ fn open_url(url: &str) -> Result<(), String> {
         .stderr(std::process::Stdio::null())
         .spawn()
         .map(|_| ())
-        .map_err(|e| format!("impossible d'ouvrir le lien : {e}"))
+        .map_err(|e| format!("could not open the link: {e}"))
 }
 
 async fn download(
@@ -328,13 +328,13 @@ async fn download(
     let notice = |text: String| {
         let _ = events.send(Event::Api(ApiEvent::Notice(text)));
     };
-    notice(format!("téléchargement de {}…", file.name));
+    notice(format!("downloading {}…", file.name));
     let mut response = client
         .download(&file.url)
         .await
         .map_err(|e| e.to_string())?;
     let total = response.content_length().unwrap_or(0);
-    let dir = path.parent().ok_or("dossier de cache introuvable")?;
+    let dir = path.parent().ok_or("cache directory not found")?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     // Written aside then renamed, so an interrupted download is never
     // taken for a complete file.
@@ -347,7 +347,7 @@ async fn download(
         let percent = (received * 100).checked_div(total).unwrap_or(0);
         if percent >= reported + 25 {
             reported = percent - percent % 25;
-            notice(format!("téléchargement de {} : {percent} %", file.name));
+            notice(format!("downloading {}: {percent}%", file.name));
         }
     }
     std::fs::rename(&partial, path).map_err(|e| e.to_string())
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn names_cached_files_safely() {
-        assert_eq!(file_name("F1", "rapport final.pdf"), "F1-rapport final.pdf");
+        assert_eq!(file_name("F1", "final report.pdf"), "F1-final report.pdf");
         assert_eq!(file_name("F2", "../../etc/passwd"), "F2-_.._etc_passwd");
         assert_eq!(file_name("F3", "a:b"), "F3-a_b");
     }

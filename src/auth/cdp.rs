@@ -33,10 +33,10 @@ impl Cdp {
                 continue;
             }
             if let Some(error) = response.get("error") {
-                bail!("{method} a échoué : {error}");
+                bail!("{method} failed: {error}");
             }
             return Ok(response["result"].clone());
         }
-        Err(anyhow!("connexion DevTools fermée pendant {method}"))
+        Err(anyhow!("DevTools connection closed during {method}"))
     }
 }

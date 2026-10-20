@@ -2,219 +2,219 @@
 
 # slackterm
 
-**Slack, dans ton terminal.**
+**Slack, in your terminal.**
 
-Temps réel, fils de discussion, recherche, sections : tout au clavier, sans quitter le shell.
+Real time, threads, search, sections: all from the keyboard, without leaving your shell.
 
 ![Rust](https://img.shields.io/badge/Rust-2024-f0b35a?logo=rust&logoColor=white)
 ![ratatui](https://img.shields.io/badge/TUI-ratatui-c59bea)
-![Temps réel](https://img.shields.io/badge/temps%20r%C3%A9el-RTM%20websocket-7ccb8a)
+![Real time](https://img.shields.io/badge/real%20time-RTM%20websocket-7ccb8a)
 
-<img src="docs/media/hero.gif" alt="slackterm : navigation dans la barre latérale, réponse dans un fil, Ctrl+K vers un message direct et réponse reçue en direct" width="100%">
+<img src="docs/media/hero.gif" alt="slackterm: moving through the sidebar, replying in a thread, Ctrl+K to a direct message and a reply arriving live" width="100%">
 
-<sub>Tout ce que tu vois ici tourne sur un workspace fictif : <code>slackterm demo</code>, sans compte Slack.</sub>
+<sub>Everything shown here runs on a made-up workspace: <code>slackterm demo</code>, no Slack account needed.</sub>
 
 <br><br>
 
-<a href="docs/media/slackterm.mp4"><img src="docs/media/video.jpg" alt="Vidéo de présentation de slackterm (1 min 40) : lecture et réponse en direct, photos de profil, navigation, recherche, réactions, dispositions et thèmes" width="70%"></a>
+<a href="docs/media/slackterm.mp4"><img src="docs/media/video.jpg" alt="slackterm presentation video (1 min 40): reading and replying live, profile pictures, navigation, search, reactions, layouts and themes" width="70%"></a>
 
-<sub>La vidéo de présentation, avec les vraies photos de profil dans le terminal.</sub>
+<sub>The presentation video, with real profile pictures in the terminal.</sub>
 
 </div>
 
 ---
 
-## Pourquoi
+## Why
 
-Slack dans le navigateur, c'est un onglet de plus, beaucoup de souris et pas mal de mémoire.
-slackterm reprend ce qui compte au quotidien — lire, répondre, retrouver un message, savoir où on t'attend — dans une interface clavier légère, pensée pour vivre à côté de ton éditeur.
+Slack in the browser is one more tab, a lot of mouse and quite a bit of memory.
+slackterm keeps what matters day to day — reading, replying, finding a message, knowing where you're needed — in a light keyboard-driven interface, built to live next to your editor.
 
-- ⚡ **Temps réel** : messages, modifications, suppressions et réactions arrivent en direct, avec reconnexion automatique.
-- 🧵 **Fils de discussion** dans un panneau dédié, pour lire et répondre sans perdre le canal de vue.
-- 🗂️ **Tes sections Slack** (avec leurs emoji), repliables, et un onglet **Privés** trié par activité.
-- 🔎 **Recherche** dans tout l'historique, avec `in:#canal`, `from:@personne`, `during:today`…
-- 🎯 **Ctrl+K** pour sauter n'importe où en quelques lettres (recherche floue).
-- 🔔 **Non-lus et mentions** repris de ton client Slack au démarrage, puis tenus à jour.
-- 🎨 **3 dispositions, 4 thèmes** et une couleur d'accent, changés en direct.
-- 🖼️ **Avatars** : les photos de profil dans les terminaux qui affichent des images (Kitty, iTerm2, WezTerm, Sixel), des initiales colorées ailleurs.
-- 😄 **Réactions** en deux touches, et les emoji Slack (`:tada:`, tons de peau, drapeaux) convertis en vrais emoji.
+- ⚡ **Real time**: messages, edits, deletions and reactions arrive live, with automatic reconnection.
+- 🧵 **Threads** in their own pane, to read and reply without losing the channel.
+- 🗂️ **Your Slack sections** (with their emoji), foldable, and a **DMs** tab sorted by activity.
+- 🔎 **Search** through the whole history, with `in:#channel`, `from:@person`, `during:today`…
+- 🎯 **Ctrl+K** to jump anywhere in a few letters (fuzzy search).
+- 🔔 **Unreads and mentions** picked up from your Slack client at startup, then kept up to date.
+- 🎨 **3 layouts, 4 themes** and an accent color, changed live.
+- 🖼️ **Avatars**: profile pictures in terminals that can draw images (Kitty, iTerm2, WezTerm, Sixel), colored initials elsewhere.
+- 😄 **Reactions** in two keystrokes, and Slack emoji (`:tada:`, skin tones, flags) turned into real emoji.
 
-## Essayer sans compte
+## Try it without an account
 
-Pas besoin de compte : le mode démo ouvre un faux workspace, avec une équipe qui prépare le lancement de la v2 de son app. Les messages arrivent tout seuls, et tes collègues réagissent à ce que tu écris.
+No account needed: demo mode opens a fake workspace, with a team getting version 2 of its app out the door. Messages arrive on their own, and your teammates react to what you write.
 
 ```sh
-git clone https://github.com/simoncdna/slackterm.git
-cd slackterm
-cargo run --release -- demo
+cargo install --git https://github.com/simoncdna/slackterm
+slackterm demo
 ```
 
-Rien ne sort de la machine, et tes réglages ne sont ni lus ni modifiés.
+Nothing leaves your machine, and your settings are neither read nor changed.
 
 ---
 
-## Tour d'horizon
+## A quick tour
 
-### Naviguer comme dans Slack
+### Get around like in Slack
 
-La barre latérale reprend les sections que tu as rangées dans Slack. `Entrée` replie une section, mais les conversations qui t'attendent (non-lus, mentions) restent visibles. `←` / `→` bascule entre **Canaux** et **Privés**, où tes messages directs sont classés par activité récente. Et pour aller plus vite : `Ctrl+K`, trois lettres, `Entrée`.
+The sidebar shows the sections you set up in Slack. `Enter` folds a section, but conversations waiting for you (unreads, mentions) stay visible. `←` / `→` switches between **Channels** and **DMs**, where your direct messages are sorted by recent activity. And to go faster: `Ctrl+K`, three letters, `Enter`.
 
-<img src="docs/media/navigation.gif" alt="Repli de la section Lancement v2, onglet Privés, puis Ctrl+K « dsg » pour ouvrir #design" width="100%">
+<img src="docs/media/navigation.gif" alt="Folding the v2 launch section, the DMs tab, then Ctrl+K “dsg” to open #design" width="100%">
 
-### Chercher dans tout l'historique
+### Search the whole history
 
-`/` ouvre la recherche dans les messages de tout le workspace, avec les termes trouvés surlignés. Ouvrir un résultat t'emmène au message, en chargeant l'historique plus ancien si besoin ; si c'est une réponse, son fil s'ouvre à côté. Les filtres de Slack fonctionnent : `in:#dev`, `from:@hugo`, `during:today`, `"phrase exacte"`.
+`/` searches messages across the whole workspace, with matching terms highlighted. Opening a result takes you to the message, loading older history if needed; if it's a reply, its thread opens beside it. Slack's filters work: `in:#dev`, `from:@hugo`, `during:today`, `"exact phrase"`.
 
-<img src="docs/media/search.gif" alt="Recherche de « migration » puis de « from:@hugo in:#dev », ouverture des résultats" width="100%">
+<img src="docs/media/search.gif" alt="Searching for “migration”, then “from:@hugo in:#dev”, and opening the results" width="100%">
 
-### Réagir sans lâcher le clavier
+### React without leaving the keyboard
 
-Sélectionne un message, `r` : les réactions les plus utilisées dans tes conversations sont proposées en premier, et quelques lettres suffisent pour trouver n'importe quel emoji, y compris ceux de ton workspace. Choisir une réaction que tu as déjà posée la retire.
+Select a message, press `r`: the reactions you use most in your conversations come first, and a few letters find any emoji, your workspace's custom ones included. Picking a reaction you already added removes it.
 
-<img src="docs/media/reactions.gif" alt="Réaction 🎉 puis 🔥 ajoutées à deux messages avec le sélecteur d'emoji" width="100%">
+<img src="docs/media/reactions.gif" alt="Adding 🎉 then 🔥 to two messages with the emoji picker" width="100%">
 
-### Trois dispositions, changées en direct
+### Three layouts, switched live
 
-`,` ouvre les réglages (disposition, thème, accent, avatars) : chaque changement s'applique immédiatement et est enregistré pour la prochaine fois.
+`,` opens the settings (layout, theme, accent, avatars): every change applies right away and is saved for next time.
 
-<img src="docs/media/layouts.gif" alt="Passage de la disposition en trois panneaux au flux dense, puis au mode focus" width="100%">
+<img src="docs/media/layouts.gif" alt="Switching from the three-pane layout to the dense stream, then to focus mode" width="100%">
 
-| | Disposition | Pour qui |
+| | Layout | Best for |
 |---|---|---|
-| **A** | Trois panneaux : barre latérale, canal, fil | La plus proche de Slack, idéale en plein écran |
-| **B** | Flux dense façon IRC, liste numérotée | Un max de messages à l'écran |
-| **C** | Focus : le canal seul, on navigue avec `Ctrl+K` | Dans un split à côté de ton éditeur |
+| **A** | Three panes: sidebar, channel, thread | Closest to Slack, great full screen |
+| **B** | Dense IRC-style stream, numbered list | As many messages on screen as possible |
+| **C** | Focus: the channel alone, navigate with `Ctrl+K` | A split next to your editor |
 
-### Quatre thèmes
+### Four themes
 
-**Nuit**, **Clair**, **Gruvbox** et **Nord**, avec un accent au choix (ambre, bleu, lilas, vert). Chaque personne garde sa couleur d'un message à l'autre.
+**Night**, **Light**, **Gruvbox** and **Nord**, with the accent of your choice (amber, blue, lilac, green). Everyone keeps their color from one message to the next.
 
-<img src="docs/media/themes.png" alt="La même vue dans les thèmes Nuit, Clair, Gruvbox et Nord" width="100%">
+<img src="docs/media/themes.png" alt="The same view in the Night, Light, Gruvbox and Nord themes" width="100%">
 
 ---
 
-## Installation
+## Install
 
-Il faut [Rust](https://rustup.rs) 1.88 ou plus récent.
+You need [Rust](https://rustup.rs) 1.88 or later.
 
 ```sh
-git clone https://github.com/simoncdna/slackterm.git
-cd slackterm
-cargo install --path .
+cargo install --git https://github.com/simoncdna/slackterm
 ```
 
-## Connexion
+## Sign in
 
 ```sh
 slackterm login
 ```
 
-slackterm ouvre Chrome (ou Chromium, Brave, Edge) dans un profil dédié : tu te connectes à ton workspace comme d'habitude, et il récupère la session web (token `xoxc` et cookie `d`). Rien à créer côté Slack, pas d'app à faire valider par un admin. Le profil est conservé, donc une session expirée se renouvelle en général d'un clic.
+slackterm opens Chrome (or Chromium, Brave, Edge) in a dedicated profile: you sign in to your workspace as usual, and it picks up the web session (the `xoxc` token and the `d` cookie). Nothing to create on the Slack side, no app for an admin to approve. The profile is kept, so an expired session usually renews in one click.
 
-Les identifiants sont enregistrés dans le trousseau du système (Trousseau d'accès sur macOS), jamais en clair sur le disque.
+Credentials are stored in the system keychain (Keychain on macOS), never in plain text on disk.
 
 ```sh
-slackterm              # ouvre l'interface
-slackterm status       # vérifie que la session est toujours valide
-slackterm logout       # efface les identifiants
+slackterm              # open the interface
+slackterm status       # check that the session is still valid
+slackterm logout       # delete the credentials
 ```
 
-| Option de `login` | |
+| `login` option | |
 |---|---|
-| `--manual` | Coller toi-même le token et le cookie, copiés depuis les DevTools |
-| `--browser <CHEMIN>` | Utiliser un autre navigateur basé sur Chromium |
-| `--timeout <SECONDES>` | Temps laissé pour se connecter (300 par défaut) |
+| `--manual` | Paste the token and cookie yourself, copied from the DevTools |
+| `--browser <PATH>` | Use another Chromium-based browser |
+| `--timeout <SECONDS>` | How long you have to sign in (300 by default) |
 
 > [!NOTE]
-> slackterm passe par la session du client web et quelques API non documentées (`client.counts`, `users.channelSections.list`), comme le fait l'app Slack elle-même. Vérifie que c'est compatible avec les règles de ton workspace.
+> slackterm uses the web client's session and a few undocumented APIs (`client.counts`, `users.channelSections.list`), just like the Slack app does. Make sure this is allowed by your workspace's policies.
 
 ---
 
-## Raccourcis
+## Keys
 
-La touche `,` affiche les réglages et la barre d'état rappelle toujours les raccourcis utiles là où tu es.
+`,` shows the settings, and the status bar always lists the keys that matter where you are.
 
-**Partout**
+**Everywhere**
 
-| Touche | Action |
+| Key | Action |
 |---|---|
-| `Ctrl+K` | Aller à un canal ou une personne |
-| `/` ou `Ctrl+F` | Chercher dans les messages |
-| `,` | Réglages (disposition, thème, accent, avatars) |
-| `Tab` / `Shift+Tab` | Panneau suivant / précédent |
-| `1` `2` `3` | Barre latérale, messages, fil |
-| `q` ou `Ctrl+C` | Quitter |
+| `Ctrl+K` | Go to a channel or a person |
+| `/` or `Ctrl+F` | Search messages |
+| `,` | Settings (layout, theme, accent, avatars) |
+| `Tab` / `Shift+Tab` | Next / previous pane |
+| `1` `2` `3` | Sidebar, messages, thread |
+| `q` or `Ctrl+C` | Quit |
 
-**Barre latérale**
+**Sidebar**
 
-| Touche | Action |
+| Key | Action |
 |---|---|
-| `j` `k` ou `↓` `↑` | Se déplacer |
-| `g` / `G` | Tout en haut / tout en bas |
-| `h` `l`, `←` `→` ou `[` `]` | Onglet Canaux / Privés |
-| `Entrée` ou `Espace` | Ouvrir la conversation, replier la section |
+| `j` `k` or `↓` `↑` | Move |
+| `g` / `G` | Top / bottom |
+| `h` `l`, `←` `→` or `[` `]` | Channels / DMs tab |
+| `Enter` or `Space` | Open the conversation, fold the section |
 
 **Messages**
 
-| Touche | Action |
+| Key | Action |
 |---|---|
-| `j` `k` ou `↓` `↑` | Sélectionner un message (remonter au-delà du plus ancien charge la suite) |
-| `PgUp` / `PgDn` | Page précédente / suivante |
-| `g` / `G` | Premier message / revenir en bas |
-| `t` | Ouvrir le fil du message |
-| `r` | Réagir au message (aussi dans le fil) |
-| `i`, `a` ou `Entrée` | Écrire |
-| `Échap` | Désélectionner, fermer le fil |
+| `j` `k` or `↓` `↑` | Select a message (going past the oldest one loads more) |
+| `PgUp` / `PgDn` | Previous / next page |
+| `g` / `G` | First message / back to the bottom |
+| `t` | Open the message's thread |
+| `r` | React to the message (in threads too) |
+| `o` | Open the message's files |
+| `p` | Play the message's video in the terminal (needs [mpv](https://mpv.io)) |
+| `i`, `a` or `Enter` | Write |
+| `Esc` | Deselect, close the thread |
 
-**En écrivant**
+**While writing**
 
-| Touche | Action |
+| Key | Action |
 |---|---|
-| `Entrée` | Envoyer |
-| `Shift+Entrée`, `Alt+Entrée` ou `Ctrl+J` | Nouvelle ligne |
-| `Ctrl+A` / `Ctrl+E` | Début / fin de ligne |
-| `Ctrl+W` ou `Alt+⌫` | Effacer le mot précédent |
-| `Ctrl+U` | Tout effacer |
-| `Échap` | Revenir en mode normal |
+| `Enter` | Send |
+| `Shift+Enter`, `Alt+Enter` or `Ctrl+J` | New line |
+| `Ctrl+A` / `Ctrl+E` | Start / end of line |
+| `Ctrl+W` or `Alt+Backspace` | Delete the previous word |
+| `Ctrl+U` | Clear everything |
+| `Esc` | Back to normal mode |
 
 ## Configuration
 
-Les réglages faits avec `,` sont enregistrés dans `config.toml` (`~/Library/Application Support/slackterm/` sur macOS, `~/.config/slackterm/` sur Linux). Tu peux aussi l'écrire à la main :
+Settings changed with `,` are saved to `config.toml` (`~/Library/Application Support/slackterm/` on macOS, `~/.config/slackterm/` on Linux). You can also write it by hand:
 
 ```toml
 layout = "panels"   # panels | stream | focus
-theme = "nuit"      # nuit | clair | gruvbox | nord
-accent = "theme"    # theme | ambre | bleu | lilas | vert
+theme = "night"     # night | light | gruvbox | nord
+accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
 ```
 
-Les sections repliées et l'onglet ouvert sont retenus à part, dans `sidebar.toml`.
+Folded sections and the open tab are remembered separately, in `sidebar.toml`.
 
 ---
 
-## Sous le capot
+## Under the hood
 
-- **Rust + [ratatui](https://ratatui.rs)**, runtime **tokio**.
-- **Architecture à la Elm** : toute la logique passe par `update(app, event) -> Vec<Command>`, qui renvoie les effets à exécuter au lieu de les lancer. Elle se teste donc sans Slack, et le mode démo n'est qu'un autre exécuteur branché sur la même interface.
-- **Temps réel** via le websocket de `rtm.connect`, avec ping et reconnexion à délai croissant.
+- **Rust + [ratatui](https://ratatui.rs)**, on the **tokio** runtime.
+- **Elm-style architecture**: all the logic goes through `update(app, event) -> Vec<Command>`, which returns the side effects to run instead of running them. So it can be tested without Slack, and demo mode is just another executor plugged into the same interface.
+- **Real time** through the `rtm.connect` websocket, with pings and reconnection with backoff.
 
 ```
 src/
-├── auth/        connexion par le navigateur (Chrome DevTools Protocol) ou à la main
-├── slack/       client HTTP, websocket temps réel, mrkdwn, emoji
+├── auth/        sign-in through the browser (Chrome DevTools Protocol) or by hand
+├── slack/       HTTP client, real-time websocket, mrkdwn, emoji
 └── tui/
-    ├── update/  toute la logique : touches, overlays, événements
-    ├── ui/      dessin : trois dispositions, barre latérale, popups
-    ├── demo/    le workspace fictif de `slackterm demo`
-    └── executor.rs  exécute les commandes contre l'API Slack
+    ├── update/  all the logic: keys, overlays, events
+    ├── ui/      drawing: three layouts, sidebar, popups
+    ├── demo/    the made-up workspace of `slackterm demo`
+    └── executor.rs  runs commands against the Slack API
 ```
 
-### Refaire les vidéos
+### Re-recording the videos
 
-Les animations de ce README sont des scripts [VHS](https://github.com/charmbracelet/vhs) joués sur le mode démo : elles se régénèrent en une commande après chaque évolution de l'interface. La vidéo de présentation, elle, est montée à part avec [Remotion](https://www.remotion.dev).
+The animations in this README are [VHS](https://github.com/charmbracelet/vhs) scripts played on demo mode: one command regenerates them after any change to the interface. The presentation video is edited separately with [Remotion](https://www.remotion.dev).
 
 ```sh
 brew install vhs
-docs/record.sh          # toutes les vidéos
-docs/record.sh search   # seulement docs/tapes/search.tape
+docs/record.sh          # every video
+docs/record.sh search   # only docs/tapes/search.tape
 ```
+

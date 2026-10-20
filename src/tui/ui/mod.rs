@@ -85,13 +85,13 @@ mod tests {
                 direct("D1", "U2"),
             ])),
         );
-        let mut with_thread = message("1700000100.000000", "U2", "le déploiement est passé <@UME>");
+        let mut with_thread = message("1700000100.000000", "U2", "the deploy went through <@UME>");
         with_thread.reply_count = 2;
         update(
             &mut app,
             Event::Api(ApiEvent::History {
                 channel: "C1".into(),
-                messages: vec![message("1700000000.000000", "U2", "salut"), with_thread],
+                messages: vec![message("1700000000.000000", "U2", "hi"), with_thread],
                 has_more: false,
             }),
         );
@@ -105,14 +105,14 @@ mod tests {
             app.settings.layout = *layout;
             let text = screen(&app, 120, 30);
             assert!(
-                text.contains("le déploiement est passé"),
+                text.contains("the deploy went through"),
                 "{layout:?}:\n{text}"
             );
             assert!(
                 text.contains("@simon") || text.contains("@UME"),
                 "{layout:?}:\n{text}"
             );
-            assert!(text.contains("2 réponses"), "{layout:?}:\n{text}");
+            assert!(text.contains("2 replies"), "{layout:?}:\n{text}");
             assert!(text.contains("NORMAL"), "{layout:?}:\n{text}");
             if *layout != Layout::Focus {
                 assert!(text.contains("deploys"), "{layout:?}:\n{text}");
@@ -125,16 +125,16 @@ mod tests {
         let mut app = sample_app();
         app.overlay = Some(Overlay::Settings { row: 1 });
         let text = screen(&app, 100, 30);
-        assert!(text.contains("réglages"));
-        assert!(text.contains("A · trois panneaux"));
-        assert!(text.contains("Nuit"));
+        assert!(text.contains("settings"));
+        assert!(text.contains("A · three panels"));
+        assert!(text.contains("Night"));
 
         app.overlay = Some(Overlay::Switcher {
             query: Default::default(),
             cursor: 0,
         });
         let text = screen(&app, 100, 30);
-        assert!(text.contains("aller à"));
+        assert!(text.contains("go to"));
         assert!(text.contains("@camille"));
     }
 
@@ -149,12 +149,12 @@ mod tests {
             )),
         );
         app.mode = Mode::Insert;
-        app.input.insert_str("une réponse en cours");
+        app.input.insert_str("a reply in progress");
         for layout in Layout::ALL {
             app.settings.layout = *layout;
             let text = screen(&app, 120, 30);
-            assert!(text.contains("une réponse en cours"), "{layout:?}:\n{text}");
-            assert!(text.contains("INSERTION"), "{layout:?}:\n{text}");
+            assert!(text.contains("a reply in progress"), "{layout:?}:\n{text}");
+            assert!(text.contains("INSERT"), "{layout:?}:\n{text}");
         }
     }
 
@@ -164,23 +164,23 @@ mod tests {
         let found: crate::slack::SearchMatch = serde_json::from_value(serde_json::json!({
             "ts": "1700000100.000000",
             "user": "U2",
-            "text": "le \u{e000}déploiement\u{e001} est passé :rocket:",
+            "text": "the \u{e000}deploy\u{e001} went through :rocket:",
             "permalink": "https://x/p?thread_ts=1700000000.000000",
             "channel": {"id": "C1", "name": "general"}
         }))
         .unwrap();
         app.overlay = Some(Overlay::Search(crate::tui::state::Search {
             query: Default::default(),
-            submitted: "déploiement".into(),
+            submitted: "deploy".into(),
             status: crate::tui::state::SearchStatus::Done(vec![found]),
             cursor: 0,
         }));
         let text = screen(&app, 110, 30);
-        assert!(text.contains("chercher dans les messages"), "{text}");
-        assert!(text.contains("1 résultat"), "{text}");
+        assert!(text.contains("search messages"), "{text}");
+        assert!(text.contains("1 result"), "{text}");
         assert!(text.contains("#general · camille"), "{text}");
-        assert!(text.contains("le déploiement est passé 🚀"), "{text}");
-        assert!(text.contains("↳ fil"), "{text}");
+        assert!(text.contains("the deploy went through 🚀"), "{text}");
+        assert!(text.contains("↳ thread"), "{text}");
     }
 
     #[test]
@@ -209,7 +209,7 @@ mod tests {
         let mut app = sample_app();
         app.channel_mut("D1").unwrap().mentions = 2;
         let text = screen(&app, 120, 30);
-        assert!(text.contains("Canaux │ Privés 2"), "{text}");
+        assert!(text.contains("Channels │ DMs 2"), "{text}");
 
         app.sidebar_tab = crate::config::SidebarTab::Direct;
         app.channel_mut("D1").unwrap().mentions = 0;
@@ -249,9 +249,9 @@ mod tests {
             )),
         );
         let text = screen(&app, 100, 30);
-        assert!(text.contains("réagir"), "{text}");
-        assert!(text.contains("message de camille"), "{text}");
-        assert!(text.contains("👍 :+1:  ✓ déjà mise"), "{text}");
+        assert!(text.contains("react"), "{text}");
+        assert!(text.contains("message from camille"), "{text}");
+        assert!(text.contains("👍 :+1:  ✓ already added"), "{text}");
     }
 
     #[test]
@@ -272,7 +272,7 @@ mod tests {
         app.overlay = Some(Overlay::Settings { row: 3 });
         let text = screen(&app, 100, 30);
         assert!(text.contains("Avatars"), "{text}");
-        assert!(text.contains("‹ photos ›  terminal sans images"), "{text}");
+        assert!(text.contains("‹ pictures ›  no image support"), "{text}");
     }
 
     fn app_with_video() -> App {
@@ -292,7 +292,7 @@ mod tests {
     fn files_show_their_kind_duration_and_size() {
         let app = app_with_video();
         let text = screen(&app, 120, 30);
-        assert!(text.contains("▶ demo.mp4 · 0:19 · 10,7 Mo"), "{text}");
+        assert!(text.contains("▶ demo.mp4 · 0:19 · 10.7 MB"), "{text}");
     }
 
     #[test]
@@ -367,7 +367,7 @@ mod tests {
         let preview = rendered.previews[0].line;
         let selected = rendered.selected.unwrap();
 
-        rendered.push_front(ratatui::text::Line::raw("début de la conversation"));
+        rendered.push_front(ratatui::text::Line::raw("start of the conversation"));
 
         assert_eq!(rendered.avatars[0].0, avatar + 1);
         assert_eq!(rendered.previews[0].line, preview + 1);
@@ -376,7 +376,7 @@ mod tests {
 
     /// `cargo test preview -- --ignored --nocapture` prints every layout.
     #[test]
-    #[ignore = "aperçu visuel, à lancer à la main"]
+    #[ignore = "visual preview, run by hand"]
     fn preview() {
         let mut app = sample_app();
         app.focus = Focus::Messages;

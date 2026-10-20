@@ -71,7 +71,7 @@ impl Pictures {
     /// How pictures are drawn, for the settings: `kitty via tmux`…
     pub fn describe(&self) -> String {
         match &self.picker {
-            None => "terminal sans images".to_string(),
+            None => "no image support".to_string(),
             Some(picker) => {
                 let protocol = format!("{:?}", picker.protocol_type()).to_lowercase();
                 if picker.tmux_detected() {

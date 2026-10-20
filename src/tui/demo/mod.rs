@@ -187,9 +187,9 @@ impl Demo {
             }
             // No files in the demo to preview.
             Command::LoadPreviews(_) => {}
-            Command::OpenFiles(_) | Command::OpenUrl(_) | Command::DownloadToPlay(_) => send(
-                ApiEvent::Notice("les fichiers de la démo ne s'ouvrent pas".into()),
-            ),
+            Command::OpenFiles(_) | Command::OpenUrl(_) | Command::DownloadToPlay(_) => {
+                send(ApiEvent::Notice("files in the demo can't be opened".into()))
+            }
             // Run by the event loop, which never hands it to the demo.
             Command::Play(_) => {}
             Command::MarkRead { .. } | Command::SaveSettings(_) | Command::SaveSidebar(_) => {}
@@ -455,12 +455,12 @@ mod tests {
     #[test]
     fn highlights_every_term_case_insensitively() {
         let terms = vec!["migration".to_string(), "prod".to_string()];
-        let text = highlight("La Migration passe en prod", &terms).unwrap();
+        let text = highlight("The Migration goes to prod", &terms).unwrap();
         assert_eq!(
             text,
-            "La \u{E000}Migration\u{E001} passe en \u{E000}prod\u{E001}"
+            "The \u{E000}Migration\u{E001} goes to \u{E000}prod\u{E001}"
         );
-        assert!(highlight("rien à voir", &terms).is_none());
+        assert!(highlight("nothing to see here", &terms).is_none());
     }
 
     #[test]
@@ -488,7 +488,7 @@ mod tests {
             content: content::build(),
             sent: 0,
         };
-        let found = state.search("notifications push");
+        let found = state.search("push notifications");
         assert_eq!(found.len(), 1);
         assert!(found[0].thread_ts().is_some());
     }

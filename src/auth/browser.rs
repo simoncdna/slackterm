@@ -74,7 +74,7 @@ pub async fn capture(
     login_timeout: Duration,
 ) -> Result<RawCredentials> {
     std::fs::create_dir_all(profile_dir)
-        .with_context(|| format!("impossible de créer {}", profile_dir.display()))?;
+        .with_context(|| format!("could not create {}", profile_dir.display()))?;
     let port_file = profile_dir.join("DevToolsActivePort");
     let _ = std::fs::remove_file(&port_file);
 
@@ -92,7 +92,7 @@ pub async fn capture(
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .spawn()
-        .with_context(|| format!("impossible de lancer {}", executable.display()))?;
+        .with_context(|| format!("could not launch {}", executable.display()))?;
 
     let devtools = match wait_for_devtools(&port_file, &mut child).await {
         Ok(devtools) => devtools,
@@ -105,7 +105,7 @@ pub async fn capture(
     let result = match timeout(login_timeout, wait_for_credentials(&devtools, &mut child)).await {
         Ok(result) => result,
         Err(_) => Err(anyhow!(
-            "délai dépassé : pas de connexion à Slack au bout de {} s",
+            "timed out: not signed in to Slack after {} s",
             login_timeout.as_secs()
         )),
     };
@@ -118,8 +118,8 @@ async fn wait_for_devtools(port_file: &Path, child: &mut Child) -> Result<DevToo
     while tokio::time::Instant::now() < deadline {
         if let Some(status) = child.try_wait()? {
             bail!(
-                "le navigateur s'est fermé tout de suite ({status}). Une fenêtre utilisant \
-                 le profil slackterm est peut-être déjà ouverte : ferme-la et réessaie"
+                "the browser quit right away ({status}). A window using the slackterm \
+                 profile may already be open: close it and try again"
             );
         }
         if let Ok(contents) = std::fs::read_to_string(port_file)
@@ -132,7 +132,7 @@ async fn wait_for_devtools(port_file: &Path, child: &mut Child) -> Result<DevToo
         }
         sleep(Duration::from_millis(100)).await;
     }
-    bail!("le navigateur n'a pas ouvert son port DevTools")
+    bail!("the browser did not open its DevTools port")
 }
 
 /// `DevToolsActivePort` holds the port on its first line and the browser
@@ -149,7 +149,7 @@ async fn wait_for_credentials(devtools: &DevTools, child: &mut Child) -> Result<
     let mut polls_without_page = 0;
     loop {
         if child.try_wait()?.is_some() {
-            bail!("navigateur fermé avant la fin de la connexion");
+            bail!("browser closed before signing in");
         }
         let targets: Vec<Target> = http
             .get(format!("{}/json/list", devtools.http_base))
@@ -162,7 +162,7 @@ async fn wait_for_credentials(devtools: &DevTools, child: &mut Child) -> Result<
         if pages.is_empty() {
             polls_without_page += 1;
             if polls_without_page >= MAX_POLLS_WITHOUT_PAGE {
-                bail!("fenêtre fermée avant la fin de la connexion");
+                bail!("window closed before signing in");
             }
         } else {
             polls_without_page = 0;
@@ -254,9 +254,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "lance un vrai navigateur (cargo test -- --ignored)"]
+    #[ignore = "launches a real browser (cargo test -- --ignored)"]
     async fn drives_a_real_headless_browser() {
-        let executable = find_browser().expect("aucun navigateur compatible installé");
+        let executable = find_browser().expect("no compatible browser installed");
         let profile = tempfile::tempdir().unwrap();
         let mut child = Command::new(&executable)
             .arg(format!("--user-data-dir={}", profile.path().display()))
@@ -300,7 +300,7 @@ mod tests {
         close_browser(&devtools, &mut child).await;
         assert!(
             child.try_wait().unwrap().is_some(),
-            "le navigateur aurait dû se fermer"
+            "the browser should have closed"
         );
     }
 }

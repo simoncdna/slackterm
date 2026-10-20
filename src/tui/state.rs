@@ -119,9 +119,9 @@ impl Section {
         let channel_ids = section.channel_ids_page.channel_ids;
         let (kind, default_name) = match section.kind.as_str() {
             "standard" => (SectionKind::Custom, ""),
-            "channels" => (SectionKind::Channels, "Canaux"),
-            "direct_messages" => (SectionKind::Direct, "Messages directs"),
-            "stars" => (SectionKind::Starred, "Favoris"),
+            "channels" => (SectionKind::Channels, "Channels"),
+            "direct_messages" => (SectionKind::Direct, "Direct messages"),
+            "stars" => (SectionKind::Starred, "Starred"),
             _ if !channel_ids.is_empty() => (SectionKind::Custom, ""),
             _ => return None,
         };
@@ -150,8 +150,8 @@ impl Section {
             channel_ids: Vec::new(),
         };
         vec![
-            section("channels", SectionKind::Channels, "Canaux"),
-            section("direct_messages", SectionKind::Direct, "Messages directs"),
+            section("channels", SectionKind::Channels, "Channels"),
+            section("direct_messages", SectionKind::Direct, "Direct messages"),
         ]
     }
 }

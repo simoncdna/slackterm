@@ -168,11 +168,11 @@ mod tests {
     #[test]
     fn resolves_user_mentions() {
         assert_eq!(
-            render("salut <@U2> et <@U1>"),
+            render("hi <@U2> and <@U1>"),
             vec![
-                ("salut ".into(), Kind::Text),
+                ("hi ".into(), Kind::Text),
                 ("@Camille".into(), Kind::Mention { me: false }),
-                (" et ".into(), Kind::Text),
+                (" and ".into(), Kind::Text),
                 ("@U1".into(), Kind::Mention { me: true }),
             ]
         );
@@ -181,11 +181,11 @@ mod tests {
     #[test]
     fn renders_channels_links_and_broadcasts() {
         assert_eq!(
-            render("<#C1|deploys> <https://x.dev|la PR> <!here>"),
+            render("<#C1|deploys> <https://x.dev|the PR> <!here>"),
             vec![
                 ("#deploys".into(), Kind::Channel),
                 (" ".into(), Kind::Text),
-                ("la PR".into(), Kind::Link),
+                ("the PR".into(), Kind::Link),
                 (" ".into(), Kind::Text),
                 ("@here".into(), Kind::Mention { me: true }),
             ]
@@ -224,7 +224,9 @@ mod tests {
     #[test]
     fn lists_web_links() {
         assert_eq!(
-            links("voir <https://youtu.be/abc|ça> et <https://x.dev> mais pas <@U1> ni <#C1|dev>"),
+            links(
+                "see <https://youtu.be/abc|this> and <https://x.dev> but not <@U1> nor <#C1|dev>"
+            ),
             ["https://youtu.be/abc", "https://x.dev"]
         );
     }

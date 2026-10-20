@@ -379,7 +379,7 @@ fn on_api(app: &mut App, event: ApiEvent) -> Vec<Command> {
                     }
                 }
             }
-            app.notice = Some(format!("réaction :{name}: : {reason}"));
+            app.notice = Some(format!("could not react with :{name}: ({reason})"));
             Vec::new()
         }
         ApiEvent::Failed(reason) => {
@@ -605,7 +605,7 @@ fn try_jump(app: &mut App) -> Vec<Command> {
     app.selected = closest.or(history.messages.len().checked_sub(1));
     app.jump = None;
     if older {
-        app.notice = Some("message trop ancien, affichage du plus proche".into());
+        app.notice = Some("message too old, showing the closest one".into());
     }
     Vec::new()
 }
@@ -648,7 +648,7 @@ fn open_files(app: &mut App) -> Vec<Command> {
     if let Some(link) = mrkdwn::links(&message.text).into_iter().next() {
         return vec![Command::OpenUrl(link)];
     }
-    app.notice = Some("rien à ouvrir dans ce message".into());
+    app.notice = Some("nothing to open in this message".into());
     Vec::new()
 }
 
@@ -662,13 +662,13 @@ fn play(app: &mut App) -> Vec<Command> {
         Some(Playable::File(index)) => match file_to_open(&message.files[index]) {
             Some(file) => vec![Command::DownloadToPlay(file)],
             None => {
-                app.notice = Some("cette vidéo n'est pas téléchargeable".into());
+                app.notice = Some("this video can't be downloaded".into());
                 Vec::new()
             }
         },
         Some(Playable::Link(url)) => vec![Command::Play(url)],
         None => {
-            app.notice = Some("aucune vidéo dans ce message".into());
+            app.notice = Some("no video in this message".into());
             Vec::new()
         }
     }

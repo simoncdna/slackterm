@@ -34,8 +34,8 @@ fn loaded_app() -> App {
         Event::Api(ApiEvent::History {
             channel: "C1".into(),
             messages: vec![
-                message("1.0", "U2", "salut"),
-                message("2.0", "U2", "ça va ?"),
+                message("1.0", "U2", "hi"),
+                message("2.0", "U2", "how are you?"),
             ],
             has_more: false,
         }),
@@ -68,7 +68,7 @@ fn marks_the_channel_read_when_its_history_arrives() {
         &mut app,
         Event::Api(ApiEvent::History {
             channel: "C1".into(),
-            messages: vec![message("1.0", "U2", "salut")],
+            messages: vec![message("1.0", "U2", "hi")],
             has_more: false,
         }),
     );
@@ -138,7 +138,7 @@ fn messages_from_unknown_channels_reload_the_list() {
         &mut app,
         Event::Rtm(RtmEvent::Message {
             channel: "D9".into(),
-            message: message("3.0", "U3", "salut"),
+            message: message("3.0", "U3", "hi"),
         }),
     );
     assert_eq!(commands, [Command::LoadConversations]);
@@ -156,7 +156,7 @@ fn messages_from_unknown_channels_reload_the_list() {
 #[test]
 fn edits_and_deletions_apply_to_the_history() {
     let mut app = loaded_app();
-    let mut edited = message("1.0", "U2", "salut à tous");
+    let mut edited = message("1.0", "U2", "hi all");
     edited.edited = Some(serde_json::json!({}));
     update(
         &mut app,
@@ -165,7 +165,7 @@ fn edits_and_deletions_apply_to_the_history() {
             message: edited,
         }),
     );
-    assert_eq!(app.current_messages()[0].text, "salut à tous");
+    assert_eq!(app.current_messages()[0].text, "hi all");
 
     update(
         &mut app,
@@ -220,7 +220,7 @@ fn replies_go_to_the_open_thread() {
 #[test]
 fn thread_replies_stay_out_of_the_channel() {
     let mut app = loaded_app();
-    let mut reply = message("3.0", "U2", "réponse");
+    let mut reply = message("3.0", "U2", "reply");
     reply.thread_ts = Some("1.0".into());
     update(
         &mut app,
@@ -344,7 +344,7 @@ fn a_new_direct_message_lists_the_conversation_first() {
         &mut app,
         Event::Rtm(RtmEvent::Message {
             channel: "D2".into(),
-            message: message("9.0", "U3", "salut"),
+            message: message("9.0", "U3", "hi"),
         }),
     );
     assert_eq!(listed(&app), ["C1", "C2", "D2", "D1"]);
@@ -402,7 +402,7 @@ fn app_with_sections() -> App {
             section("S1", "standard", "Tooling", &["C2"], Some("S2")),
             section("S2", "channels", "", &[], Some("S3")),
             section("S3", "direct_messages", "", &[], None),
-            section("S4", "salesforce_records", "Canaux Salesforce", &[], None),
+            section("S4", "salesforce_records", "Salesforce channels", &[], None),
         ])),
     );
     app
@@ -412,7 +412,7 @@ fn app_with_sections() -> App {
 fn custom_sections_hold_their_channels() {
     let app = app_with_sections();
     let names: Vec<String> = app.sections.iter().map(|s| s.name.clone()).collect();
-    assert_eq!(names, ["Tooling", "Canaux", "Messages directs"]);
+    assert_eq!(names, ["Tooling", "Channels", "Direct messages"]);
     assert_eq!(app.sections[0].emoji.as_deref(), Some("🧰"));
     assert_eq!(
         app.sidebar_items(),
@@ -467,7 +467,7 @@ fn found(channel: &str, ts: &str, permalink: &str) -> SearchMatch {
     serde_json::from_value(serde_json::json!({
         "ts": ts,
         "user": "U2",
-        "text": "le \u{e000}deploy\u{e001} est passé",
+        "text": "the \u{e000}deploy\u{e001} went through",
         "permalink": permalink,
         "channel": {"id": channel, "name": "general"}
     }))
@@ -605,7 +605,7 @@ fn the_private_tab_lists_direct_messages_by_recency() {
         &mut app,
         Event::Rtm(RtmEvent::Message {
             channel: "D2".into(),
-            message: message("9.0", "U3", "salut"),
+            message: message("9.0", "U3", "hi"),
         }),
     );
 
@@ -741,14 +741,14 @@ fn reactions_in_a_thread_go_to_the_selected_reply() {
     app.histories.get_mut("C1").unwrap().messages[1].reply_count = 1;
     app.focus = Focus::Messages;
     update(&mut app, key(KeyCode::Char('t')));
-    let mut reply = message("3.0", "U2", "réponse");
+    let mut reply = message("3.0", "U2", "reply");
     reply.thread_ts = Some("2.0".into());
     update(
         &mut app,
         Event::Api(ApiEvent::Replies {
             channel: "C1".into(),
             ts: "2.0".into(),
-            messages: vec![message("2.0", "U2", "ça va ?"), reply],
+            messages: vec![message("2.0", "U2", "how are you?"), reply],
         }),
     );
     update(&mut app, key(KeyCode::Char('k')));
@@ -787,7 +787,7 @@ fn pictures_are_requested_once_for_authors_on_screen() {
         &mut app,
         Event::Api(ApiEvent::History {
             channel: "C1".into(),
-            messages: vec![message("1.0", "U2", "salut"), message("2.0", "U2", "re")],
+            messages: vec![message("1.0", "U2", "hi"), message("2.0", "U2", "re")],
             has_more: false,
         }),
     );
@@ -826,7 +826,7 @@ fn no_pictures_are_fetched_when_initials_are_chosen() {
         &mut app,
         Event::Api(ApiEvent::History {
             channel: "C1".into(),
-            messages: vec![message("1.0", "U2", "salut")],
+            messages: vec![message("1.0", "U2", "hi")],
             has_more: false,
         }),
     );
@@ -876,7 +876,7 @@ fn app_with_video(graphics: bool) -> App {
         &mut app,
         Event::Api(ApiEvent::History {
             channel: "C1".into(),
-            messages: vec![message("1.0", "U2", "salut"), with_video],
+            messages: vec![message("1.0", "U2", "hi"), with_video],
             has_more: false,
         }),
     );
@@ -952,7 +952,7 @@ fn o_on_a_message_without_files_says_so() {
     assert!(
         app.notice
             .as_deref()
-            .is_some_and(|n| n.contains("rien à ouvrir"))
+            .is_some_and(|n| n.contains("nothing to open"))
     );
 }
 
@@ -1024,12 +1024,12 @@ fn p_downloads_a_video_file_then_plays_it() {
 
 #[test]
 fn p_without_a_video_says_so() {
-    let mut app = app_with_message(|msg| msg.text = "pas de vidéo ici".into());
+    let mut app = app_with_message(|msg| msg.text = "no video here".into());
     assert!(update(&mut app, key(KeyCode::Char('p'))).is_empty());
     assert!(
         app.notice
             .as_deref()
-            .is_some_and(|n| n.contains("aucune vidéo"))
+            .is_some_and(|n| n.contains("no video"))
     );
 }
 

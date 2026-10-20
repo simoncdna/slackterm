@@ -102,7 +102,7 @@ async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool,
                 let message = match incoming {
                     Some(Ok(message)) => message,
                     Some(Err(e)) => return (greeted, e.to_string()),
-                    None => return (greeted, "connexion fermée".into()),
+                    None => return (greeted, "connection closed".into()),
                 };
                 let WsMessage::Text(text) = message else { continue };
                 let Ok(value) = serde_json::from_str::<Value>(&text) else { continue };
@@ -111,13 +111,13 @@ async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool,
                         greeted = true;
                         Some(RtmEvent::Connected)
                     }
-                    Some("goodbye") => return (greeted, "Slack a demandé une reconnexion".into()),
+                    Some("goodbye") => return (greeted, "Slack asked to reconnect".into()),
                     _ => parse(&value),
                 };
                 if let Some(event) = event
                     && events.send(event).is_err()
                 {
-                    return (greeted, "application fermée".into());
+                    return (greeted, "app closed".into());
                 }
             }
             _ = ping.tick() => {

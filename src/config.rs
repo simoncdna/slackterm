@@ -29,8 +29,8 @@ impl Choice for Layout {
     const ALL: &'static [Self] = &[Self::Panels, Self::Stream, Self::Focus];
     fn label(self) -> &'static str {
         match self {
-            Self::Panels => "A · trois panneaux",
-            Self::Stream => "B · flux dense (IRC)",
+            Self::Panels => "A · three panels",
+            Self::Stream => "B · dense stream (IRC)",
             Self::Focus => "C · focus + ^k",
         }
     }
@@ -39,19 +39,22 @@ impl Choice for Layout {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemeName {
+    // The aliases keep reading config files written by the French versions.
     #[default]
-    Nuit,
-    Clair,
+    #[serde(alias = "nuit")]
+    Night,
+    #[serde(alias = "clair")]
+    Light,
     Gruvbox,
     Nord,
 }
 
 impl Choice for ThemeName {
-    const ALL: &'static [Self] = &[Self::Nuit, Self::Clair, Self::Gruvbox, Self::Nord];
+    const ALL: &'static [Self] = &[Self::Night, Self::Light, Self::Gruvbox, Self::Nord];
     fn label(self) -> &'static str {
         match self {
-            Self::Nuit => "Nuit",
-            Self::Clair => "Clair",
+            Self::Night => "Night",
+            Self::Light => "Light",
             Self::Gruvbox => "Gruvbox",
             Self::Nord => "Nord",
         }
@@ -64,27 +67,31 @@ pub enum Accent {
     /// The theme's own accent color.
     #[default]
     Theme,
-    Ambre,
-    Bleu,
-    Lilas,
-    Vert,
+    #[serde(alias = "ambre")]
+    Amber,
+    #[serde(alias = "bleu")]
+    Blue,
+    #[serde(alias = "lilas")]
+    Lilac,
+    #[serde(alias = "vert")]
+    Green,
 }
 
 impl Choice for Accent {
     const ALL: &'static [Self] = &[
         Self::Theme,
-        Self::Ambre,
-        Self::Bleu,
-        Self::Lilas,
-        Self::Vert,
+        Self::Amber,
+        Self::Blue,
+        Self::Lilac,
+        Self::Green,
     ];
     fn label(self) -> &'static str {
         match self {
-            Self::Theme => "celui du thème",
-            Self::Ambre => "Ambre",
-            Self::Bleu => "Bleu",
-            Self::Lilas => "Lilas",
-            Self::Vert => "Vert",
+            Self::Theme => "the theme's own",
+            Self::Amber => "Amber",
+            Self::Blue => "Blue",
+            Self::Lilac => "Lilac",
+            Self::Green => "Green",
         }
     }
 }
@@ -103,9 +110,9 @@ impl Choice for AvatarStyle {
     const ALL: &'static [Self] = &[Self::Images, Self::Initials, Self::Off];
     fn label(self) -> &'static str {
         match self {
-            Self::Images => "photos",
-            Self::Initials => "initiales",
-            Self::Off => "masqués",
+            Self::Images => "pictures",
+            Self::Initials => "initials",
+            Self::Off => "hidden",
         }
     }
 }
@@ -125,7 +132,7 @@ pub struct Settings {
 impl Settings {
     pub fn path() -> Result<PathBuf> {
         let dirs = directories::ProjectDirs::from("", "", "slackterm")
-            .context("impossible de déterminer le dossier de configuration")?;
+            .context("could not find the config directory")?;
         Ok(dirs.config_dir().join("config.toml"))
     }
 
@@ -133,10 +140,11 @@ impl Settings {
     pub fn load() -> Result<Self> {
         let path = Self::path()?;
         match std::fs::read_to_string(&path) {
-            Ok(contents) => Self::from_toml(&contents)
-                .with_context(|| format!("{} est invalide", path.display())),
+            Ok(contents) => {
+                Self::from_toml(&contents).with_context(|| format!("{} is invalid", path.display()))
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(e) => Err(e).with_context(|| format!("impossible de lire {}", path.display())),
+            Err(e) => Err(e).with_context(|| format!("could not read {}", path.display())),
         }
     }
 
@@ -146,7 +154,7 @@ impl Settings {
             std::fs::create_dir_all(dir)?;
         }
         std::fs::write(&path, self.to_toml()?)
-            .with_context(|| format!("impossible d'écrire {}", path.display()))
+            .with_context(|| format!("could not write {}", path.display()))
     }
 
     fn from_toml(contents: &str) -> Result<Self> {
@@ -181,7 +189,7 @@ pub struct SidebarState {
 impl SidebarState {
     fn path() -> Result<PathBuf> {
         let dirs = directories::ProjectDirs::from("", "", "slackterm")
-            .context("impossible de déterminer le dossier de données")?;
+            .context("could not find the data directory")?;
         Ok(dirs.data_dir().join("sidebar.toml"))
     }
 
@@ -200,7 +208,7 @@ impl SidebarState {
             std::fs::create_dir_all(dir)?;
         }
         std::fs::write(&path, toml::to_string(self)?)
-            .with_context(|| format!("impossible d'écrire {}", path.display()))
+            .with_context(|| format!("could not write {}", path.display()))
     }
 }
 
@@ -213,7 +221,7 @@ mod tests {
         let settings = Settings {
             layout: Layout::Stream,
             theme: ThemeName::Gruvbox,
-            accent: Accent::Lilas,
+            accent: Accent::Lilac,
             avatars: AvatarStyle::Initials,
         };
         let toml = settings.to_toml().unwrap();
@@ -226,6 +234,13 @@ mod tests {
         let settings = Settings::from_toml("theme = \"nord\"").unwrap();
         assert_eq!(settings.theme, ThemeName::Nord);
         assert_eq!(settings.layout, Layout::Panels);
+    }
+
+    #[test]
+    fn reads_the_french_names_of_earlier_versions() {
+        let settings = Settings::from_toml("theme = \"clair\"\naccent = \"vert\"").unwrap();
+        assert_eq!(settings.theme, ThemeName::Light);
+        assert_eq!(settings.accent, Accent::Green);
     }
 
     #[test]

@@ -25,9 +25,9 @@ fn channel_title(app: &App) -> String {
 
 fn placeholder(app: &App) -> String {
     if thread_target(app) {
-        "Répondre dans le fil… (i)".to_string()
+        "Reply in thread… (i)".to_string()
     } else {
-        format!("Écrire dans {}… (i)", channel_title(app))
+        format!("Message {}… (i)", channel_title(app))
     }
 }
 
@@ -61,9 +61,9 @@ fn channel_messages(
     );
     let history = app.current_history();
     let top = match history {
-        Some(h) if h.loading_older => Some("chargement des messages plus anciens…"),
+        Some(h) if h.loading_older => Some("loading older messages…"),
         Some(h) if h.loaded && !h.has_more && !h.messages.is_empty() => {
-            Some("début de la conversation")
+            Some("start of the conversation")
         }
         _ => None,
     };
@@ -107,20 +107,20 @@ fn thread_messages(
 
 fn thread_title(app: &App) -> String {
     let Some(thread) = &app.thread else {
-        return "fil".to_string();
+        return "thread".to_string();
     };
     let Some(parent) = thread.messages.first() else {
-        return "fil".to_string();
+        return "thread".to_string();
     };
     let replies = (parent.reply_count as usize).max(thread.messages.len() - 1);
     let author = app.author(parent);
     format!(
-        "fil · {author} · {replies} réponse{}",
-        if replies > 1 { "s" } else { "" }
+        "thread · {author} · {replies} repl{}",
+        if replies == 1 { "y" } else { "ies" }
     )
 }
 
-// ---------------------------------------------------- A · trois panneaux
+// ------------------------------------------------------ A · three panels
 
 pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let [main, status] =
@@ -190,7 +190,7 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
         MessageStyle::Panels,
         pictures,
     );
-    let channel_placeholder = format!("Écrire dans {}… (i)", channel_title(app));
+    let channel_placeholder = format!("Message {}… (i)", channel_title(app));
     input_box(
         frame,
         input_area,
@@ -204,13 +204,13 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
     if app.thread.is_some() {
         let block = panel(
             theme,
-            "[3] fil".into(),
-            Some("esc fermer".into()),
+            "[3] thread".into(),
+            Some("esc close".into()),
             app.focus == Focus::Thread,
         );
         let inner = block.inner(right);
         frame.render_widget(block, right);
-        let composer = InputStyle::Boxed { title: "réponse" };
+        let composer = InputStyle::Boxed { title: "reply" };
         let [messages_area, input_area] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(input_height(app, inner.width, &composer)),
@@ -231,21 +231,21 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
             theme,
             &composer,
             thread_target(app),
-            "Répondre… (3 puis i)",
+            "Reply… (3 then i)",
         );
     }
 
     status_bar(frame, status, app, theme, None);
 }
 
-// ------------------------------------------------- B · flux dense (IRC)
+// ----------------------------------------------- B · dense stream (IRC)
 
 pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
-    let target = if thread_target(app) { "fil" } else { "" };
+    let target = if thread_target(app) { "thread" } else { "" };
     let prompt = if target.is_empty() {
         format!("[{}] ", app.my_name)
     } else {
-        format!("[{} → fil] ", app.my_name)
+        format!("[{} → thread] ", app.my_name)
     };
     let composer = InputStyle::Prompt { prompt };
     let [title, main, thread, status, input] = Layout::vertical([
@@ -332,7 +332,7 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
     input_box(frame, input, app, theme, &composer, true, &placeholder(app));
 }
 
-// ---------------------------------------------- C · focus + sélecteur
+// ----------------------------------------------- C · focus + switcher
 
 pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictures) {
     let composer = InputStyle::Prompt {
@@ -360,7 +360,7 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Picture
         .current_channel()
         .map(|c| c.topic.clone())
         .unwrap_or_default();
-    let hint = "^k aller à   , réglages";
+    let hint = "^k go to   , settings";
     let room = (header_inner.width as usize).saturating_sub(hint.width() + 2);
     let title = channel_title(app);
     let left = vec![

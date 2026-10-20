@@ -58,7 +58,7 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
         frame,
         area,
         theme,
-        "aller à",
+        "go to",
         format!("{} / {}", results.len(), app.channels.len()),
     );
 
@@ -121,7 +121,7 @@ pub fn switcher(frame: &mut Frame, app: &App, theme: &Theme, query: &Input, curs
     frame.render_widget(
         Paragraph::new(hint_line(
             theme,
-            &[("↑↓", "choisir"), ("⏎", "ouvrir"), ("esc", "fermer")],
+            &[("↑↓", "select"), ("⏎", "open"), ("esc", "close")],
         )),
         hint_area,
     );
@@ -144,7 +144,7 @@ pub fn settings(
         width,
         height,
     };
-    let inner = popup(frame, area, theme, "réglages", "appliqués en direct".into());
+    let inner = popup(frame, area, theme, "settings", "applied live".into());
     let [rows_area, path_area, hint_area] = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Length(1),
@@ -153,8 +153,8 @@ pub fn settings(
     .areas(inner);
 
     let entries = [
-        ("Affichage", settings.layout.label()),
-        ("Thème", settings.theme.label()),
+        ("Layout", settings.layout.label()),
+        ("Theme", settings.theme.label()),
         ("Accent", settings.accent.label()),
         ("Avatars", settings.avatars.label()),
     ];
@@ -192,8 +192,8 @@ pub fn settings(
     frame.render_widget(Paragraph::new(lines), rows_area);
 
     let saved = match path {
-        Some(path) => format!("enregistré dans {}", path.display()),
-        None => "réglages non enregistrés".to_string(),
+        Some(path) => format!("saved to {}", path.display()),
+        None => "settings not saved".to_string(),
     };
     let label = truncate(&saved, path_area.width as usize);
     frame.render_widget(
@@ -203,7 +203,7 @@ pub fn settings(
     frame.render_widget(
         Paragraph::new(hint_line(
             theme,
-            &[("j/k", "choisir"), ("h/l", "changer"), ("esc", "fermer")],
+            &[("j/k", "select"), ("h/l", "change"), ("esc", "close")],
         )),
         hint_area,
     );
@@ -220,15 +220,15 @@ pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
         height,
     };
     let status = match &search.status {
-        SearchStatus::Idle => "⏎ pour chercher".to_string(),
-        SearchStatus::Loading => "recherche…".to_string(),
+        SearchStatus::Idle => "⏎ to search".to_string(),
+        SearchStatus::Loading => "searching…".to_string(),
         SearchStatus::Done(matches) => {
-            let plural = if matches.len() > 1 { "s" } else { "" };
-            format!("{} résultat{plural}", matches.len())
+            let plural = if matches.len() == 1 { "" } else { "s" };
+            format!("{} result{plural}", matches.len())
         }
-        SearchStatus::Failed(_) => "erreur".to_string(),
+        SearchStatus::Failed(_) => "error".to_string(),
     };
-    let inner = popup(frame, area, theme, "chercher dans les messages", status);
+    let inner = popup(frame, area, theme, "search messages", status);
     let [input_area, tip_area, list_area, hint_area] = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(2),
@@ -244,7 +244,7 @@ pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
     frame.render_widget(Paragraph::new(prompt), input_area);
     let (_, (_, cursor_col)) = search.query.layout(u16::MAX);
     frame.set_cursor_position((input_area.x + 2 + cursor_col, input_area.y));
-    let tip = "in:#canal   from:@personne   during:today   \"phrase exacte\"";
+    let tip = "in:#channel   from:@person   during:today   \"exact phrase\"";
     frame.render_widget(
         Paragraph::new(Line::styled(tip, Style::new().fg(theme.muted))),
         tip_area,
@@ -254,19 +254,19 @@ pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
     match &search.status {
         SearchStatus::Idle => frame.render_widget(
             message(
-                "Tape ta recherche puis ⏎. ⏎ sur un résultat l'ouvre.".into(),
+                "Type your search, then ⏎. ⏎ on a result opens it.".into(),
                 theme.muted,
             ),
             list_area,
         ),
         SearchStatus::Loading => {
-            frame.render_widget(message("recherche…".into(), theme.muted), list_area)
+            frame.render_widget(message("searching…".into(), theme.muted), list_area)
         }
         SearchStatus::Failed(reason) => {
             frame.render_widget(message(reason.clone(), theme.unread), list_area)
         }
         SearchStatus::Done(matches) if matches.is_empty() => {
-            frame.render_widget(message("Aucun résultat.".into(), theme.muted), list_area)
+            frame.render_widget(message("No results.".into(), theme.muted), list_area)
         }
         SearchStatus::Done(matches) => {
             let visible = (list_area.height as usize / 3).max(1);
@@ -293,11 +293,7 @@ pub fn search(frame: &mut Frame, app: &App, theme: &Theme, search: &Search) {
     frame.render_widget(
         Paragraph::new(hint_line(
             theme,
-            &[
-                ("⏎", "chercher / ouvrir"),
-                ("↑↓", "choisir"),
-                ("esc", "fermer"),
-            ],
+            &[("⏎", "search / open"), ("↑↓", "select"), ("esc", "close")],
         )),
         hint_area,
     );
@@ -340,7 +336,7 @@ fn result_lines(
         ),
     ];
     if found.thread_ts().is_some() {
-        header.push(Span::styled("  ↳ fil", Style::new().fg(theme.link)));
+        header.push(Span::styled("  ↳ thread", Style::new().fg(theme.link)));
     }
 
     let names = |id: &str| app.users.get(id).map(|u| u.display_name().to_string());
@@ -392,8 +388,8 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
         frame,
         area,
         theme,
-        "réagir",
-        format!("message de {}", picker.target.author),
+        "react",
+        format!("message from {}", picker.target.author),
     );
     let [preview_area, input_area, list_area, hint_area] = Layout::vertical([
         Constraint::Length(1),
@@ -410,7 +406,7 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
         .collect();
     frame.render_widget(
         Paragraph::new(Line::styled(
-            truncate(&format!("« {preview} »"), preview_area.width as usize),
+            truncate(&format!("“{preview}”"), preview_area.width as usize),
             Style::new().fg(theme.muted),
         )),
         preview_area,
@@ -434,7 +430,7 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
     if choices.is_empty() {
         frame.render_widget(
             Paragraph::new(Line::styled(
-                "Aucun emoji ne correspond.",
+                "No matching emoji.",
                 Style::new().fg(theme.muted),
             )),
             list_area,
@@ -472,10 +468,13 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
             }
             spans.push(Span::styled(":", Style::new().fg(theme.muted)));
             if choice.glyph.is_none() {
-                spans.push(Span::styled("  perso", Style::new().fg(theme.muted)));
+                spans.push(Span::styled("  custom", Style::new().fg(theme.muted)));
             }
             if mine(&choice.name) {
-                spans.push(Span::styled("  ✓ déjà mise", Style::new().fg(theme.accent)));
+                spans.push(Span::styled(
+                    "  ✓ already added",
+                    Style::new().fg(theme.accent),
+                ));
             }
             let line = Line::from(spans);
             if selected {
@@ -490,11 +489,7 @@ pub fn emoji_picker(frame: &mut Frame, app: &App, theme: &Theme, picker: &EmojiP
     frame.render_widget(
         Paragraph::new(hint_line(
             theme,
-            &[
-                ("⏎", "réagir / retirer"),
-                ("↑↓", "choisir"),
-                ("esc", "fermer"),
-            ],
+            &[("⏎", "react / remove"), ("↑↓", "select"), ("esc", "close")],
         )),
         hint_area,
     );

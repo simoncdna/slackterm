@@ -25,7 +25,7 @@ const fn rgb(hex: u32) -> Color {
     Color::Rgb((hex >> 16) as u8, (hex >> 8) as u8, hex as u8)
 }
 
-const NUIT: Theme = Theme {
+const NIGHT: Theme = Theme {
     bg: rgb(0x141318),
     surface: rgb(0x2A2633),
     panel: rgb(0x1C1A22),
@@ -46,7 +46,7 @@ const NUIT: Theme = Theme {
     ],
 };
 
-const CLAIR: Theme = Theme {
+const LIGHT: Theme = Theme {
     bg: rgb(0xFAF8F5),
     surface: rgb(0xE9E4EE),
     panel: rgb(0xF0ECE6),
@@ -112,23 +112,23 @@ const NORD: Theme = Theme {
 impl Theme {
     pub fn from_settings(settings: &Settings) -> Self {
         let mut theme = match settings.theme {
-            ThemeName::Nuit => NUIT,
-            ThemeName::Clair => CLAIR,
+            ThemeName::Night => NIGHT,
+            ThemeName::Light => LIGHT,
             ThemeName::Gruvbox => GRUVBOX,
             ThemeName::Nord => NORD,
         };
-        let light = settings.theme == ThemeName::Clair;
+        let light = settings.theme == ThemeName::Light;
         // Light backgrounds need darker accents to keep text readable.
         let accent = match (settings.accent, light) {
             (Accent::Theme, _) => None,
-            (Accent::Ambre, false) => Some(0xF0B35A),
-            (Accent::Ambre, true) => Some(0xA65A12),
-            (Accent::Bleu, false) => Some(0x8FB8F0),
-            (Accent::Bleu, true) => Some(0x2F5FB3),
-            (Accent::Lilas, false) => Some(0xC59BEA),
-            (Accent::Lilas, true) => Some(0x7B4FB0),
-            (Accent::Vert, false) => Some(0x7CCB8A),
-            (Accent::Vert, true) => Some(0x2E7D4F),
+            (Accent::Amber, false) => Some(0xF0B35A),
+            (Accent::Amber, true) => Some(0xA65A12),
+            (Accent::Blue, false) => Some(0x8FB8F0),
+            (Accent::Blue, true) => Some(0x2F5FB3),
+            (Accent::Lilac, false) => Some(0xC59BEA),
+            (Accent::Lilac, true) => Some(0x7B4FB0),
+            (Accent::Green, false) => Some(0x7CCB8A),
+            (Accent::Green, true) => Some(0x2E7D4F),
         };
         if let Some(accent) = accent {
             theme.accent = rgb(accent);
@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn accent_override_replaces_the_theme_accent() {
         let settings = Settings {
-            accent: Accent::Bleu,
+            accent: Accent::Blue,
             ..Settings::default()
         };
         assert_eq!(Theme::from_settings(&settings).accent, rgb(0x8FB8F0));
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn nick_colors_are_stable() {
-        let theme = NUIT;
+        let theme = NIGHT;
         assert_eq!(theme.nick("U123"), theme.nick("U123"));
     }
 }
