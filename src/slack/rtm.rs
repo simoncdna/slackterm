@@ -70,10 +70,12 @@ pub fn spawn(client: SlackClient, events: UnboundedSender<RtmEvent>) -> JoinHand
             let reason = match end {
                 End::Dropped(reason) => reason,
                 End::SessionExpired => {
+                    tracing::warn!("real time: session expired, no more reconnections");
                     let _ = events.send(RtmEvent::SessionExpired);
                     return;
                 }
             };
+            tracing::warn!(%reason, in_secs = backoff.as_secs(), "real time: connection lost");
             if greeted {
                 backoff = MIN_BACKOFF;
             }
@@ -126,6 +128,7 @@ async fn run(client: &SlackClient, events: &UnboundedSender<RtmEvent>) -> (bool,
                 let event = match value["type"].as_str() {
                     Some("hello") => {
                         greeted = true;
+                        tracing::info!("real time: connected");
                         Some(RtmEvent::Connected)
                     }
                     Some("goodbye") => return (greeted, dropped(&"Slack asked to reconnect")),

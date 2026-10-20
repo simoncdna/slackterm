@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod commands;
 pub mod config;
+pub mod logs;
 pub mod platform;
 pub mod session;
 pub mod slack;

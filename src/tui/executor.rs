@@ -54,7 +54,10 @@ pub fn execute(command: Command, client: &SlackClient, events: &UnboundedSender<
             Ok(Some(event)) => event,
             Ok(None) => return,
             Err(Failure::SessionExpired) => ApiEvent::SessionExpired,
-            Err(Failure::Other(reason)) => ApiEvent::Failed(reason),
+            Err(Failure::Other(reason)) => {
+                tracing::warn!(%reason, "command failed");
+                ApiEvent::Failed(reason)
+            }
         };
         let _ = events.send(Event::Api(event));
     });

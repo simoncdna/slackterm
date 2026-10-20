@@ -21,6 +21,9 @@ struct Cli {
     /// Config file to use instead of the usual one
     #[arg(long, global = true, value_name = "PATH")]
     config: Option<PathBuf>,
+    /// Log every call to Slack, for a bug report
+    #[arg(long, global = true)]
+    debug: bool,
 }
 
 #[derive(Subcommand)]
@@ -43,6 +46,8 @@ enum Command {
     Status,
     /// Try the interface on a made-up workspace, no Slack account needed
     Demo,
+    /// Check what slackterm needs, and where its log is
+    Doctor,
     /// Open the config file in your editor ($VISUAL or $EDITOR)
     Config {
         /// Only print where the config file is
@@ -63,6 +68,15 @@ fn main() -> Result<()> {
 async fn run() -> Result<()> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let cli = Cli::parse();
+    // Only what can go wrong over time logs: running `doctor` after a crash
+    // must not push the crash's log out.
+    let logs = matches!(
+        cli.command,
+        None | Some(Command::Login { .. } | Command::Demo)
+    );
+    if logs && let Err(e) = slackterm::logs::init(cli.debug) {
+        eprintln!("⚠ no log file: {e:#}");
+    }
     let store = SystemStore::new()?;
 
     let Some(command) = cli.command else {
@@ -90,6 +104,9 @@ async fn run() -> Result<()> {
         Command::Logout => commands::logout(&store),
         Command::Status => commands::status(&store, DEFAULT_API_BASE).await,
         Command::Demo => slackterm::tui::run_demo().await,
+        Command::Doctor => {
+            commands::doctor(&store, DEFAULT_API_BASE, &config_path(cli.config)?).await
+        }
         Command::Config { path, default } => {
             commands::config(&config_path(cli.config)?, ConfigOptions { path, default })
         }

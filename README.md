@@ -137,6 +137,7 @@ Credentials are stored in the system keychain: Keychain on macOS, Credential Man
 slackterm              # open the interface
 slackterm status       # check that the session is still valid
 slackterm logout       # delete the credentials
+slackterm doctor       # check your setup when something is off
 ```
 
 | `login` option | |
@@ -260,6 +261,18 @@ bg = "reset"        # the terminal's background, transparency included
 `slackterm config --default` lists them all: background, text, borders, links, unread counts, and the colors given to people.
 
 Folded sections and the open tab are remembered separately, in `sidebar.toml`.
+
+---
+
+## When something goes wrong
+
+```sh
+slackterm doctor
+```
+
+checks what slackterm needs, one line each: what your terminal can show (pictures, Shift+Enter), the keychain, the session of every workspace, the config file, the browser for `login`, and mpv and yt-dlp for videos. Paste its output in a bug report.
+
+The interface also writes `slackterm.log` (in `~/.local/share/slackterm/` on Linux, `~/Library/Application Support/slackterm/` on macOS), and keeps the previous run's as `slackterm.old.log` in case that one crashed. It holds what slackterm did — Slack methods called, real-time connection, errors — but never tokens, cookies or what people write. `--debug` adds every call to Slack; `SLACKTERM_LOG` sets any level, as `RUST_LOG` does.
 
 ---
 

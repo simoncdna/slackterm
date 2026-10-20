@@ -38,6 +38,30 @@ use update::{Command, Event, initial_commands, update};
 pub use pictures::reveal_tmux;
 pub use template::default_config;
 
+/// What the terminal can do, for `slackterm doctor`.
+pub struct TerminalSupport {
+    /// How pictures are drawn, if they are.
+    pub pictures: Option<String>,
+    /// Shift+Enter differs from Enter.
+    pub keyboard_enhancement: bool,
+}
+
+/// Asks the terminal, which needs raw mode. `None` when not run in one.
+pub fn probe_terminal() -> Option<TerminalSupport> {
+    use std::io::IsTerminal;
+    if !stdout().is_terminal() {
+        return None;
+    }
+    crossterm::terminal::enable_raw_mode().ok()?;
+    let pictures = pictures::Pictures::detect();
+    let keyboard_enhancement = supports_keyboard_enhancement().unwrap_or(false);
+    let _ = crossterm::terminal::disable_raw_mode();
+    Some(TerminalSupport {
+        pictures: pictures.available().then(|| pictures.describe()),
+        keyboard_enhancement,
+    })
+}
+
 /// What is wrong with the `[keys]` of a config file.
 pub fn check_keys(config: &Config) -> Vec<String> {
     Keymap::new(&config.keys).1
@@ -54,6 +78,12 @@ pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
         Err(e) => (Config::default(), Some(format!("{e:#}"))),
     };
     let (keymap, key_problems) = Keymap::new(&config.keys);
+    if let Some(error) = &config_error {
+        tracing::warn!(%error, "config");
+    }
+    for problem in &key_problems {
+        tracing::warn!(%problem, "config");
+    }
     let mut app = App::new(workspace, config.settings);
     app.keymap = keymap;
     app.colors = config.colors;
@@ -111,6 +141,12 @@ async fn run_app(
     let mut enhanced = enter_interface_mode();
     let mut pictures = pictures::Pictures::detect();
     app.graphics = pictures.available();
+    tracing::info!(
+        pictures = %pictures.describe(),
+        keyboard_enhancement = enhanced,
+        layout = ?app.settings.layout,
+        "interface started"
+    );
     let mut screen = Screen {
         terminal: &mut terminal,
         enhanced: &mut enhanced,

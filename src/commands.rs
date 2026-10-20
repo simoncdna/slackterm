@@ -5,9 +5,10 @@ use anyhow::{Context, Result, bail};
 
 use crate::auth::{browser, manual};
 use crate::config::Config;
+use crate::platform::find_program;
 use crate::session::{RawCredentials, Session, Workspace, normalize_cookie_d};
 use crate::slack::{SlackClient, SlackError};
-use crate::store::{Saved, SessionStore};
+use crate::store::{Saved, SessionStore, SystemStore};
 
 pub struct LoginOptions {
     pub manual: bool,
@@ -125,6 +126,157 @@ pub async fn status(store: &dyn SessionStore, api_base: &str) -> Result<()> {
             }
             Err(e) => println!("? {who}: {e}"),
         }
+    }
+    Ok(())
+}
+
+enum Check {
+    Ok,
+    /// Optional, or with a way around it.
+    Missing,
+    Problem,
+}
+
+fn report(check: Check, name: &str, detail: impl std::fmt::Display) {
+    let mark = match check {
+        Check::Ok => "✓",
+        Check::Missing => "–",
+        Check::Problem => "✕",
+    };
+    println!("{mark} {name:<12} {detail}");
+}
+
+/// Checks what slackterm needs, one line each, to fix a setup or to paste
+/// in a bug report.
+pub async fn doctor(store: &SystemStore, api_base: &str, config_path: &Path) -> Result<()> {
+    println!(
+        "slackterm {} · {} {}\n",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
+
+    let term: Vec<String> = ["TERM_PROGRAM", "TERM"]
+        .into_iter()
+        .filter_map(|name| std::env::var(name).ok())
+        .collect();
+    let tmux = if std::env::var_os("TMUX").is_some() {
+        ", in tmux"
+    } else {
+        ""
+    };
+    match crate::tui::probe_terminal() {
+        Some(support) => {
+            report(Check::Ok, "Terminal", format!("{}{tmux}", term.join(", ")));
+            match support.pictures {
+                Some(protocol) => report(Check::Ok, "Pictures", protocol),
+                None => report(
+                    Check::Missing,
+                    "Pictures",
+                    "not supported here: initials instead (Kitty, Ghostty, iTerm2, \
+                     WezTerm and sixel terminals show them)",
+                ),
+            }
+            if support.keyboard_enhancement {
+                report(Check::Ok, "Shift+Enter", "a new line");
+            } else {
+                report(
+                    Check::Missing,
+                    "Shift+Enter",
+                    "same as Enter here: Alt+Enter or Ctrl+J for a new line",
+                );
+            }
+        }
+        None => report(
+            Check::Missing,
+            "Terminal",
+            "not a terminal: run doctor in the one you use",
+        ),
+    }
+
+    match store.check_keychain() {
+        Ok(()) => report(Check::Ok, "Keychain", "the system's"),
+        Err(e) => report(
+            Check::Missing,
+            "Keychain",
+            format!(
+                "unavailable ({e:#}): the session is kept in {}",
+                store.file().display()
+            ),
+        ),
+    }
+    match store.load()? {
+        None => report(
+            Check::Problem,
+            "Session",
+            "not signed in: run `slackterm login`",
+        ),
+        Some(session) => {
+            for workspace in &session.workspaces {
+                let who = format!("{} @ {}", workspace.user_name, workspace.team_name);
+                let client = SlackClient::new(api_base, &workspace.token, &session.cookie_d)?;
+                match client.auth_test().await {
+                    Ok(_) => report(Check::Ok, "Session", who),
+                    Err(e) if e.is_session_expired() => report(
+                        Check::Problem,
+                        "Session",
+                        format!("{who}: expired, run `slackterm login`"),
+                    ),
+                    Err(e) => report(Check::Problem, "Session", format!("{who}: {e}")),
+                }
+            }
+        }
+    }
+
+    if !config_path.exists() {
+        report(
+            Check::Ok,
+            "Config",
+            format!("defaults ({} not created)", config_path.display()),
+        );
+    } else {
+        match Config::load(config_path) {
+            Ok(config) => {
+                let problems = crate::tui::check_keys(&config);
+                if problems.is_empty() {
+                    report(Check::Ok, "Config", config_path.display());
+                }
+                for problem in problems {
+                    report(Check::Problem, "Config", problem);
+                }
+            }
+            Err(e) => report(Check::Problem, "Config", format!("{e:#}")),
+        }
+    }
+
+    match browser::find_browser() {
+        Some(path) => report(Check::Ok, "Browser", path.display()),
+        None => report(
+            Check::Missing,
+            "Browser",
+            "no Chrome, Chromium, Brave or Edge: sign in with `slackterm login --manual`",
+        ),
+    }
+    let programs = [
+        ("mpv", "to play videos in the terminal: https://mpv.io"),
+        (
+            "yt-dlp",
+            "to play video links: https://github.com/yt-dlp/yt-dlp",
+        ),
+    ];
+    for (program, purpose) in programs {
+        match find_program(program) {
+            Some(path) => report(Check::Ok, program, path.display()),
+            None => report(
+                Check::Missing,
+                program,
+                format!("not installed, needed {purpose}"),
+            ),
+        }
+    }
+
+    if let Some(log) = crate::logs::path() {
+        report(Check::Ok, "Logs", log.display());
     }
     Ok(())
 }

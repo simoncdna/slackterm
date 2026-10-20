@@ -354,17 +354,27 @@ impl SlackClient {
         }
     }
 
+    /// Logs the method, how long it took and why Slack refused it, but
+    /// never the parameters: they hold messages.
     async fn call_value(&self, method: &str, params: &Params<'_>) -> Result<Value, SlackError> {
+        let started = std::time::Instant::now();
         let mut attempt = 0;
         loop {
-            let response = self
+            let sent = self
                 .http
                 .post(format!("{}/{method}", self.api_base))
                 .bearer_auth(&self.token)
                 .header(COOKIE, format!("d={}", self.cookie_d))
                 .form(params)
                 .send()
-                .await?;
+                .await;
+            let response = match sent {
+                Ok(response) => response,
+                Err(e) => {
+                    tracing::warn!(method, error = %e, "slack unreachable");
+                    return Err(e.into());
+                }
+            };
 
             if response.status() == StatusCode::TOO_MANY_REQUESTS
                 && attempt < MAX_RATE_LIMIT_RETRIES
@@ -376,15 +386,19 @@ impl SlackClient {
                     .and_then(|v| v.to_str().ok())
                     .and_then(|v| v.parse().ok())
                     .unwrap_or(1);
+                tracing::warn!(method, wait, "rate limited by slack");
                 tokio::time::sleep(Duration::from_secs(wait)).await;
                 continue;
             }
 
             let body: Value = response.error_for_status()?.json().await?;
+            let ms = started.elapsed().as_millis() as u64;
             if body["ok"] != true {
                 let error = body["error"].as_str().unwrap_or("unknown_error");
+                tracing::warn!(method, error, ms, "slack refused");
                 return Err(SlackError::Api(error.to_string()));
             }
+            tracing::debug!(method, ms, "slack");
             return Ok(body);
         }
     }

@@ -33,6 +33,18 @@ pub struct SystemStore<K = Keyring> {
     file: PathBuf,
 }
 
+impl<K: Keychain> SystemStore<K> {
+    /// Whether the system keychain can be reached.
+    pub fn check_keychain(&self) -> Result<()> {
+        self.keychain.get().map(|_| ())
+    }
+
+    /// Where the session goes when there is no keychain.
+    pub fn file(&self) -> &Path {
+        &self.file
+    }
+}
+
 impl SystemStore {
     pub fn new() -> Result<Self> {
         let dirs = directories::ProjectDirs::from("", "", "slackterm")
