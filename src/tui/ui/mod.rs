@@ -257,12 +257,14 @@ mod tests {
     #[test]
     fn headers_start_with_initials_unless_avatars_are_off() {
         let mut app = sample_app();
+        // The first message, in the machine's time zone.
+        let time = text::local_time(1_700_000_000).format("%H:%M");
         let text = screen(&app, 120, 30);
-        assert!(text.contains(" CA  camille  23:13"), "{text}");
+        assert!(text.contains(&format!(" CA  camille  {time}")), "{text}");
 
         app.settings.avatars = crate::config::AvatarStyle::Off;
         let text = screen(&app, 120, 30);
-        assert!(text.contains("23:13  camille"), "{text}");
+        assert!(text.contains(&format!("{time}  camille")), "{text}");
         assert!(!text.contains(" CA "), "{text}");
     }
 
