@@ -320,8 +320,11 @@ mod tests {
         };
         assert_eq!(choose(&[("TERM", "xterm-256color")], &[tool]), expected);
         // In tmux, the system's tool needs nothing from tmux's settings.
-        let tmux = [("TERM_PROGRAM", "WezTerm"), ("TMUX", "/tmp/t")];
-        assert_eq!(choose(&tmux, &[tool]), expected);
+        // There is no tmux on Windows, nor a tool.
+        if !cfg!(windows) {
+            let tmux = [("TERM_PROGRAM", "WezTerm"), ("TMUX", "/tmp/t")];
+            assert_eq!(choose(&tmux, &[tool]), expected);
+        }
         // Over SSH, the system is the server's.
         let ssh = [
             ("SSH_CONNECTION", "1.2.3.4 5 6.7.8.9 22"),
