@@ -1,5 +1,6 @@
 //! The message box: what the user typed turned into Slack's markup, and
-//! people or channels suggested while a name is typed after `@` or `#`.
+//! people, channels or emoji suggested while a name is typed after `@`, `#`
+//! or `:`.
 
 use std::collections::HashMap;
 
@@ -21,6 +22,15 @@ const BROADCASTS: [(&str, &str); 3] = [
 fn is_name_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '.' | '_' | '-')
 }
+
+/// What an emoji name is made of: `+1`, `thumbsup`, `face-palm`.
+fn is_emoji_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '-' | '+')
+}
+
+/// Letters typed after `:` before emoji are suggested, so that `:)` or
+/// `Note:` stay quiet.
+const EMOJI_QUERY: usize = 2;
 
 /// Slack's markup for what the user typed: `<`, `>` and `&` escaped, and
 /// `@name`, `@here` and `#channel` turned into mentions Slack notifies.
@@ -181,10 +191,10 @@ impl<'a> Names<'a> {
     }
 }
 
-/// A name being typed after `@` or `#`, with the suggestion picked.
+/// A name being typed after `@`, `#` or `:`, with the suggestion picked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Completion {
-    /// Byte offset of the `@` or `#` in the message.
+    /// Byte offset of the `@`, `#` or `:` in the message.
     pub start: usize,
     pub sigil: char,
     /// What follows the sigil, up to the cursor.
@@ -194,29 +204,34 @@ pub struct Completion {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Suggestion {
-    /// What replaces the typed name: `@hugo.bernard`, `#dev`.
+    /// What replaces the typed name: `@hugo.bernard`, `#dev`, `:tada:`.
     pub text: String,
-    /// Said after it: the person's name, what a broadcast does.
+    /// Said after it: the person's name, what a broadcast does, the emoji.
     pub detail: String,
 }
 
-/// Where the `@` or `#` of the name the cursor ends is, if it ends one.
+/// Where the `@`, `#` or `:` of the name the cursor ends is, if it ends
+/// one.
 pub fn name_before_cursor(input: &Input) -> Option<usize> {
     let before = &input.text()[..input.cursor()];
-    let length: usize = before
+    let name: String = before
         .chars()
         .rev()
-        .take_while(|c| is_name_char(*c))
-        .map(char::len_utf8)
-        .sum();
-    let name_start = before.len() - length;
+        .take_while(|c| is_name_char(*c) || is_emoji_char(*c))
+        .collect();
+    let name_start = before.len() - name.len();
     let sigil = before[..name_start].chars().next_back()?;
     let sigil_at = name_start - sigil.len_utf8();
     let starts_word = before[..sigil_at]
         .chars()
         .next_back()
         .is_none_or(|c| !c.is_alphanumeric());
-    (matches!(sigil, '@' | '#') && starts_word).then_some(sigil_at)
+    let fits = match sigil {
+        '@' | '#' => name.chars().all(is_name_char),
+        ':' => name.chars().all(is_emoji_char) && name.chars().count() >= EMOJI_QUERY,
+        _ => false,
+    };
+    (fits && starts_word).then_some(sigil_at)
 }
 
 /// Keeps a draft per conversation and per thread: when the user starts
@@ -274,9 +289,21 @@ pub fn refresh(app: &mut App) {
     });
 }
 
-/// The people or channels that fit what is typed, best first.
+/// The people, channels or emoji that fit what is typed, best first.
 pub fn suggestions(app: &App, completion: &Completion) -> Vec<Suggestion> {
     let query = completion.query.as_str();
+    if completion.sigil == ':' {
+        // Ordered as in the reaction picker.
+        return app
+            .emoji_choices(query)
+            .into_iter()
+            .take(SHOWN)
+            .map(|choice| Suggestion {
+                text: format!(":{}:", choice.name),
+                detail: choice.glyph.unwrap_or_else(|| "custom".to_string()),
+            })
+            .collect();
+    }
     let mut found: Vec<(i32, Suggestion)> = Vec::new();
     if completion.sigil == '@' {
         for (name, detail) in BROADCASTS {
@@ -423,6 +450,15 @@ mod tests {
         assert_eq!(typed("mail alex@hu"), None);
         assert_eq!(typed("hi @hugo "), None);
         assert_eq!(typed("hi hugo"), None);
+        assert_eq!(typed("ship it :ta"), Some(8));
+        assert_eq!(typed(":+1"), Some(0));
+        // Smileys, times and labels are not emoji names.
+        assert_eq!(typed("ok :)"), None);
+        assert_eq!(typed("ok :D"), None);
+        assert_eq!(typed("at 10:30"), None);
+        assert_eq!(typed("Note:"), None);
+        assert_eq!(typed("done :tada:"), None);
+        assert_eq!(typed("@hugo+1"), None);
     }
 
     #[test]
@@ -445,5 +481,9 @@ mod tests {
         assert_eq!(texts('@', "cam"), ["@camille", "@camille.roux"]);
         assert_eq!(texts('#', "de"), ["#dev", "#design"]);
         assert_eq!(texts('@', "").len(), SHOWN);
+        assert_eq!(texts(':', "tada")[0], ":tada:");
+        assert_eq!(texts(':', "+1")[0], ":+1:");
+        let tada = suggestions(&app, &completion(':', "tada")).remove(0);
+        assert_eq!(tada.detail, "🎉");
     }
 }

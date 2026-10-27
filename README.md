@@ -210,6 +210,7 @@ slackterm doctor       # check your setup when something is off
 |---|---|
 | `Enter` | Send |
 | `@` or `#`, then `Tab` or `Enter` | Mention someone, `@here` or a channel, picked from the suggestions |
+| `:` and two letters, then `Tab` or `Enter` | An emoji, picked from the suggestions |
 | `Shift+Enter`, `Alt+Enter` or `Ctrl+J` | New line |
 | `Ctrl+A` / `Ctrl+E` | Start / end of line |
 | `Ctrl+W` or `Alt+Backspace` | Delete the previous word |

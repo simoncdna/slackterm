@@ -691,10 +691,10 @@ pub fn suggestions(
         width,
         height: height.min(composer.y),
     };
-    let title = if completion.sigil == '#' {
-        "channels"
-    } else {
-        "people"
+    let title = match completion.sigil {
+        '#' => "channels",
+        ':' => "emoji",
+        _ => "people",
     };
     let inner = popup(frame, area, theme, title, "tab to complete".into());
     let selected = completion.selected.min(suggestions.len() - 1);

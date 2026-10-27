@@ -1193,6 +1193,26 @@ fn completes_a_mention_and_sends_it_as_one() {
 }
 
 #[test]
+fn completes_an_emoji_after_a_colon() {
+    let mut app = writing_app();
+    typed(&mut app, "shipped :t");
+    assert!(app.completion.is_none());
+    typed(&mut app, "ada");
+    update(&mut app, key(KeyCode::Tab));
+    assert_eq!(app.input.text(), "shipped :tada: ");
+
+    let commands = update(&mut app, key(KeyCode::Enter));
+    assert_eq!(
+        commands,
+        [Command::Send {
+            channel: "C1".into(),
+            text: "shipped :tada:".into(),
+            thread_ts: None
+        }]
+    );
+}
+
+#[test]
 fn enter_picks_a_suggestion_rather_than_sending() {
     let mut app = writing_app();
     typed(&mut app, "@h");
