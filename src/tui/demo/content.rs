@@ -239,11 +239,23 @@ fn counts(
                 .and_then(|list| list.iter().rev().find(|m| !m.is_thread_reply()))
                 .map(|m| m.ts.clone());
             let mentions = unread.get(conversation.id.as_str());
+            // As many new messages as mentions, at least one.
+            let top: Vec<&Message> = messages
+                .get(&conversation.id)
+                .map(|list| list.iter().filter(|m| !m.is_thread_reply()).collect())
+                .unwrap_or_default();
+            let last_read = mentions.map(|&count| {
+                let new = (count.max(1) as usize).min(top.len());
+                top.len()
+                    .checked_sub(new + 1)
+                    .map_or_else(|| "0".to_string(), |i| top[i].ts.clone())
+            });
             from_json(json!({
                 "id": conversation.id,
                 "has_unreads": mentions.is_some(),
                 "mention_count": mentions.copied().unwrap_or(0),
                 "latest": latest,
+                "last_read": last_read,
             }))
         })
         .collect()

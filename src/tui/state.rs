@@ -42,6 +42,8 @@ pub struct Channel {
     pub latest: String,
     /// Muted by the user: only mentions count as unread.
     pub muted: bool,
+    /// Timestamp of the latest message the user read, when Slack says.
+    pub last_read: String,
 }
 
 impl Channel {
@@ -66,6 +68,7 @@ impl Channel {
             listed: !matches!(kind, ChannelKind::Direct | ChannelKind::Group),
             latest: String::new(),
             muted: false,
+            last_read: String::new(),
         }
     }
 
@@ -93,6 +96,7 @@ impl Channel {
             listed: false,
             latest: String::new(),
             muted: false,
+            last_read: String::new(),
         }
     }
 
@@ -450,6 +454,9 @@ pub struct App {
     /// Threads the user takes part in with replies not seen yet, by
     /// [`draft_key`].
     pub unread_threads: HashSet<String>,
+    /// The conversation on screen and what the user had read in it when
+    /// they opened it: the messages after are marked new.
+    pub new_since: Option<(String, String)>,
     /// Every workspace the user is signed in to, this one included.
     pub workspaces: Vec<WorkspaceTab>,
     /// This workspace's place in `workspaces`.
@@ -519,6 +526,7 @@ impl App {
             draft_key: None,
             attachments: HashMap::new(),
             unread_threads: HashSet::new(),
+            new_since: None,
             workspaces: Vec::new(),
             workspace: 0,
             visible: true,
@@ -608,6 +616,15 @@ impl App {
         self.current
             .as_deref()
             .and_then(|id| self.histories.get(id))
+    }
+
+    /// Where the messages the user had not read start, in the conversation
+    /// on screen.
+    pub fn new_since(&self) -> Option<&str> {
+        self.new_since
+            .as_ref()
+            .filter(|(channel, _)| self.current.as_deref() == Some(channel))
+            .map(|(_, ts)| ts.as_str())
     }
 
     pub fn current_messages(&self) -> &[Message] {
@@ -857,6 +874,11 @@ impl App {
                 && *latest > channel.latest
             {
                 channel.latest = latest.clone();
+            }
+            if let Some(last_read) = &count.last_read
+                && *last_read > channel.last_read
+            {
+                channel.last_read = last_read.clone();
             }
         }
         self.sort_channels();

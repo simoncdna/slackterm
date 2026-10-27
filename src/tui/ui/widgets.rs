@@ -95,16 +95,33 @@ pub fn message_lines(
     let mut previous: Option<&Message> = None;
     let mut ranges = Vec::new();
     let avatars = app.settings.avatars != AvatarStyle::Off && style != MessageStyle::Stream;
+    // The first message the user had not read, theirs aside.
+    let mut new_since = app.new_since().filter(|_| !in_thread);
 
     for (index, message) in messages.iter().enumerate() {
         let day = local_time(message.epoch_seconds()).date_naive();
-        if previous.is_none_or(|p| local_time(p.epoch_seconds()).date_naive() != day) {
-            lines.push(separator(
+        let new_day = previous.is_none_or(|p| local_time(p.epoch_seconds()).date_naive() != day);
+        let mine = message.user.as_deref() == Some(app.my_id.as_str());
+        let new = new_since.is_some_and(|since| message.ts.as_str() > since && !mine);
+        if new {
+            new_since = None;
+        }
+        // One rule when both fall on the same message: `Today · new`.
+        match (new_day, new) {
+            (true, true) => {
+                let label = format!("{} · new", day_label(day, today));
+                lines.push(separator(&label, width, theme.unread, theme.unread));
+            }
+            (true, false) => lines.push(separator(
                 &day_label(day, today),
                 width,
                 theme.muted,
                 theme.border,
-            ));
+            )),
+            (false, true) => lines.push(separator("new", width, theme.unread, theme.unread)),
+            (false, false) => {}
+        }
+        if new_day || new {
             previous = None;
         }
         let grouped = previous.is_some_and(|p| {

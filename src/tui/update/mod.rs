@@ -603,6 +603,9 @@ fn on_rtm(app: &mut App, event: RtmEvent) -> Vec<Command> {
                 } else if let Some(mentions) = mentions {
                     known.mentions = mentions as u32;
                 }
+                if ts > known.last_read {
+                    known.last_read = ts;
+                }
             }
         }
         RtmEvent::ConversationsChanged => return vec![Command::LoadConversations],
@@ -797,6 +800,9 @@ fn receive(app: &mut App, channel: String, message: Message) -> Vec<Command> {
     );
 
     if app.visible && app.current.as_deref() == Some(&channel) {
+        if let Some(known) = app.channel_mut(&channel) {
+            known.last_read = known.latest.clone();
+        }
         return mark_read(app, &channel).into_iter().collect();
     }
     if mine {
@@ -893,8 +899,13 @@ fn open_channel(app: &mut App, id: &str) -> Vec<Command> {
         app.focus = Focus::Messages;
     }
     app.sidebar_cursor = Some(SidebarItem::Channel(id.to_string()));
+    app.new_since = None;
     if let Some(index) = app.channels.iter().position(|c| c.id == id) {
         let channel = &mut app.channels[index];
+        if channel.unread && !channel.last_read.is_empty() {
+            app.new_since = Some((id.to_string(), channel.last_read.clone()));
+        }
+        channel.last_read = channel.last_read.clone().max(channel.latest.clone());
         channel.unread = false;
         channel.mentions = 0;
         channel.listed = true;

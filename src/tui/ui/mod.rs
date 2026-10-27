@@ -310,6 +310,19 @@ mod tests {
     }
 
     #[test]
+    fn a_rule_marks_where_the_unread_messages_start() {
+        let mut app = sample_app();
+        app.new_since = Some(("C1".into(), "1700000000.000000".into()));
+        let text = screen(&app, 120, 30);
+        let rule = text.find(" new ").expect(&text);
+        assert!(rule > text.find("hi").unwrap(), "{text}");
+        assert!(
+            rule < text.find("the deploy went through").unwrap(),
+            "{text}"
+        );
+    }
+
+    #[test]
     fn new_replies_show_on_the_threads_the_user_follows() {
         let mut app = sample_app();
         let parent = "1700000100.000000";

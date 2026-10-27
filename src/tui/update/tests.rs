@@ -326,6 +326,7 @@ fn count(id: &str, unread: bool, latest: &str) -> ConversationCount {
         has_unreads: unread,
         mention_count: 0,
         latest: Some(latest.into()),
+        last_read: None,
     }
 }
 
@@ -1863,4 +1864,33 @@ fn replies_in_the_users_threads_notify() {
     mine.parent_user_id = Some("UME".into());
     arrives(&mut app, "C1", mine);
     assert!(app.unread_threads.is_empty());
+}
+
+#[test]
+fn opening_a_conversation_marks_where_the_new_messages_start() {
+    let mut app = loaded_app();
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Counts(vec![
+            serde_json::from_value(serde_json::json!({
+                "id": "C2", "has_unreads": true, "latest": "6.0", "last_read": "4.0"
+            }))
+            .unwrap(),
+        ])),
+    );
+    go_to(&mut app, "random");
+    assert_eq!(app.new_since(), Some("4.0"));
+
+    // Read up to the end now: nothing is new the next time.
+    go_to(&mut app, "general");
+    assert_eq!(app.new_since(), None);
+    go_to(&mut app, "random");
+    assert_eq!(app.new_since(), None);
+
+    // What arrives while the user reads is read too.
+    arrives(&mut app, "C2", message("7.0", "U2", "still there?"));
+    go_to(&mut app, "general");
+    arrives(&mut app, "C2", message("8.0", "U2", "hello?"));
+    go_to(&mut app, "random");
+    assert_eq!(app.new_since(), Some("7.0"));
 }

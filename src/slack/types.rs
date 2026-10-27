@@ -169,6 +169,9 @@ pub struct ConversationCount {
     /// Timestamp of the latest message.
     #[serde(default)]
     pub latest: Option<String>,
+    /// Timestamp of the latest message the user read.
+    #[serde(default)]
+    pub last_read: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
