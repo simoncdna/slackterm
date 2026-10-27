@@ -57,6 +57,7 @@ fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
             return vec![Command::NextWorkspace];
         }
         Action::NextUnread => return open_next_unread(app),
+        Action::MarkAllRead => return mark_all_read(app),
         Action::Write if app.current.is_some() => {
             if app.focus == Focus::Sidebar {
                 app.focus = Focus::Messages;
@@ -200,6 +201,44 @@ fn edit_message(app: &mut App) {
     app.mode = Mode::Insert;
 }
 
+/// Marks read every conversation with something unread, as Shift+Esc does
+/// in Slack.
+fn mark_all_read(app: &mut App) -> Vec<Command> {
+    let mut commands = Vec::new();
+    for channel in &mut app.channels {
+        if !channel.unread && channel.mentions == 0 {
+            continue;
+        }
+        channel.unread = false;
+        channel.mentions = 0;
+        if !channel.latest.is_empty() {
+            channel.last_read = channel.latest.clone();
+            commands.push(Command::MarkRead {
+                channel: channel.id.clone(),
+                ts: channel.latest.clone(),
+            });
+        }
+    }
+    app.new_since = None;
+    app.notice = Some(match commands.len() {
+        0 => "nothing unread".to_string(),
+        1 => "1 conversation marked read".to_string(),
+        count => format!("{count} conversations marked read"),
+    });
+    commands
+}
+
+/// ↑ in an empty message box edits the user's latest message, as in Slack.
+fn edit_latest(app: &mut App) {
+    match (app.focus, &mut app.thread) {
+        (Focus::Thread, Some(thread)) => thread.selected = None,
+        _ => app.selected = None,
+    }
+    if app.own_message().is_some() {
+        edit_message(app);
+    }
+}
+
 fn confirm_delete(app: &mut App) {
     match app.own_message() {
         Some(target) => app.overlay = Some(Overlay::DeleteMessage(target)),
@@ -328,6 +367,11 @@ fn on_insert_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Enter if newline => app.input.insert('\n'),
         KeyCode::Char('j') if ctrl => app.input.insert('\n'),
         KeyCode::Enter => return send(app),
+        KeyCode::Up
+            if app.input.is_empty() && app.editing.is_none() && app.attached().is_empty() =>
+        {
+            edit_latest(app)
+        }
         KeyCode::Backspace if key.modifiers.contains(KeyModifiers::ALT) => app.input.delete_word(),
         KeyCode::Backspace if app.input.is_empty() => detach_last(app),
         KeyCode::Backspace => app.input.backspace(),

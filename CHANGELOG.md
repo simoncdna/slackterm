@@ -9,6 +9,8 @@ What changes from one version of slackterm to the next. The format follows [Keep
 - Several workspaces at once: `w` or Ctrl+K switches between them, the status bar tells what waits in the others, and slackterm opens the last one you used. The others stay connected, and what arrives there stays unread until you look.
 - The demo has a second workspace to switch to.
 - `n` opens the next conversation with unread messages, in any workspace.
+- `M` (or Shift+Esc, as in Slack) marks every conversation of the workspace read.
+- `↑` in an empty message box edits your last message, as in Slack.
 - `y` copies a message's text and `Y` its link, through the terminal over SSH.
 - The mouse: the wheel scrolls, a click opens, selects or starts writing. `mouse = "off"` gives text selection back to the terminal.
 - Send files: drop them on the terminal, or paste their path, and they go with the next message.

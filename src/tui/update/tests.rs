@@ -1894,3 +1894,48 @@ fn opening_a_conversation_marks_where_the_new_messages_start() {
     go_to(&mut app, "random");
     assert_eq!(app.new_since(), Some("7.0"));
 }
+
+#[test]
+fn mark_all_read_marks_every_unread_conversation() {
+    let mut app = loaded_app();
+    arrives(&mut app, "C2", message("3.0", "U2", "deploy?"));
+    arrives(&mut app, "D1", message("4.0", "U2", "lunch?"));
+    app.focus = Focus::Messages;
+    let commands = update(&mut app, key(KeyCode::Char('M')));
+    assert_eq!(
+        commands,
+        [
+            Command::MarkRead {
+                channel: "C2".into(),
+                ts: "3.0".into()
+            },
+            Command::MarkRead {
+                channel: "D1".into(),
+                ts: "4.0".into()
+            },
+        ]
+    );
+    assert!(app.channels.iter().all(|c| !c.unread && c.mentions == 0));
+    assert_eq!(update(&mut app, key(KeyCode::Char('M'))), []);
+    assert_eq!(app.notice.as_deref(), Some("nothing unread"));
+}
+
+#[test]
+fn up_in_an_empty_message_box_edits_the_last_message() {
+    let mut app = writing_app();
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Sent {
+            channel: "C1".into(),
+            message: message("5.0", "UME", "see you <@U2>"),
+        }),
+    );
+    typed(&mut app, "x");
+    update(&mut app, key(KeyCode::Up));
+    assert!(app.editing.is_none());
+
+    update(&mut app, key(KeyCode::Backspace));
+    update(&mut app, key(KeyCode::Up));
+    assert_eq!(app.editing.as_ref().map(|e| e.ts.as_str()), Some("5.0"));
+    assert_eq!(app.input.text(), "see you @hugo");
+}

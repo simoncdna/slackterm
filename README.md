@@ -172,6 +172,7 @@ slackterm doctor       # check your setup when something is off
 | `Ctrl+K` | Go to a channel, a person or another workspace |
 | `w` | Next workspace, when signed in to several |
 | `n` | Next conversation with unread messages, in any workspace |
+| `M` or `Shift+Esc` | Mark every conversation of the workspace read |
 | `/` or `Ctrl+F` | Search messages |
 | `,` | Settings (layout, theme, accent, avatars, clock, mouse, notifications) |
 | `Tab` / `Shift+Tab` | Next / previous pane |
@@ -209,6 +210,7 @@ slackterm doctor       # check your setup when something is off
 | Key | Action |
 |---|---|
 | `Enter` | Send |
+| `↑` in an empty box | Edit your last message |
 | `@` or `#`, then `Tab` or `Enter` | Mention someone, `@here` or a channel, picked from the suggestions |
 | `:` and two letters, then `Tab` or `Enter` | An emoji, picked from the suggestions |
 | Drop a file on the terminal, or paste its path | Send it with the message; `Backspace` in an empty box takes it back |
