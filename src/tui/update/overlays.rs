@@ -144,7 +144,8 @@ fn on_settings_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         2 => settings.accent = settings.accent.cycle(step),
         3 => settings.avatars = settings.avatars.cycle(step),
         4 => settings.clock = settings.clock.cycle(step),
-        _ => settings.mouse = settings.mouse.cycle(step),
+        5 => settings.mouse = settings.mouse.cycle(step),
+        _ => settings.notifications = settings.notifications.cycle(step),
     }
     if app.settings.layout == Layout::Focus && app.focus == Focus::Sidebar {
         app.focus = Focus::Messages;

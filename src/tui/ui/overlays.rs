@@ -194,6 +194,7 @@ pub fn settings(
         ("Avatars", settings.avatars.label()),
         ("Clock", settings.clock.label()),
         ("Mouse", settings.mouse.label()),
+        ("Notifications", settings.notifications.label()),
     ];
     // The picture protocol in use, to tell why only initials show.
     let notes = [
@@ -201,6 +202,7 @@ pub fn settings(
         None,
         None,
         (settings.avatars == AvatarStyle::Images).then_some(images),
+        None,
         None,
         None,
     ];
@@ -213,7 +215,7 @@ pub fn settings(
                 if selected { "› " } else { "  " },
                 Style::new().fg(theme.accent),
             ),
-            Span::styled(format!("{name:<12}"), Style::new().fg(theme.muted)),
+            Span::styled(format!("{name:<14}"), Style::new().fg(theme.muted)),
             Span::styled("‹ ", arrows),
             Span::styled(value, Style::new().fg(theme.fg).bold()),
             Span::styled(" ›", arrows),

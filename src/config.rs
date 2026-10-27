@@ -164,6 +164,26 @@ impl Choice for Mouse {
     }
 }
 
+/// Whether direct messages and mentions are announced on the desktop while
+/// you look elsewhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Notifications {
+    #[default]
+    On,
+    Off,
+}
+
+impl Choice for Notifications {
+    const ALL: &'static [Self] = &[Self::On, Self::Off];
+    fn label(self) -> &'static str {
+        match self {
+            Self::On => "direct messages and mentions",
+            Self::Off => "off",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -178,6 +198,8 @@ pub struct Settings {
     pub clock: Clock,
     #[serde(default)]
     pub mouse: Mouse,
+    #[serde(default)]
+    pub notifications: Notifications,
 }
 
 impl Settings {
@@ -249,6 +271,8 @@ struct File {
     #[serde(default)]
     mouse: Mouse,
     #[serde(default)]
+    notifications: Notifications,
+    #[serde(default)]
     keys: BTreeMap<String, KeyList>,
     #[serde(default)]
     colors: Colors,
@@ -276,6 +300,7 @@ impl Config {
                 avatars: file.avatars,
                 clock: file.clock,
                 mouse: file.mouse,
+                notifications: file.notifications,
             },
             keys: file.keys,
             colors: file.colors,
@@ -468,6 +493,7 @@ mod tests {
             avatars: AvatarStyle::Initials,
             clock: Clock::TwelveHour,
             mouse: Mouse::Off,
+            notifications: Notifications::Off,
         };
         let toml = settings.write_into("").unwrap();
         assert!(toml.contains("layout = \"stream\""));

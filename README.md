@@ -173,7 +173,7 @@ slackterm doctor       # check your setup when something is off
 | `w` | Next workspace, when signed in to several |
 | `n` | Next conversation with unread messages, in any workspace |
 | `/` or `Ctrl+F` | Search messages |
-| `,` | Settings (layout, theme, accent, avatars, clock) |
+| `,` | Settings (layout, theme, accent, avatars, clock, mouse, notifications) |
 | `Tab` / `Shift+Tab` | Next / previous pane |
 | `1` `2` `3` | Sidebar, messages, thread |
 | `q` or `Ctrl+C` | Quit |
@@ -244,9 +244,12 @@ accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
 clock = "24h"       # 24h | 12h
 mouse = "on"        # on | off
+notifications = "on"  # on | off
 ```
 
 With the mouse on, the wheel scrolls the list under the pointer, and a click opens a conversation, folds a section, switches tab or workspace, selects a message, or starts writing in the message box. To select text with the mouse anyway, hold Shift (Option in iTerm2), or set `mouse = "off"`.
+
+Notifications announce direct messages and mentions, in every workspace, unless you are reading that conversation in the terminal's active window; conversations you muted in Slack only notify for mentions. Kitty, Ghostty, iTerm2, WezTerm and foot show them themselves, over SSH too; elsewhere `osascript` (macOS) or `notify-send` (Linux) does, and the terminal's bell as a last resort. In tmux, slackterm uses the system's tool; over SSH in tmux, it needs `set -g allow-passthrough on`. `slackterm doctor` says which is used.
 
 ### Keys
 
@@ -285,7 +288,7 @@ Folded sections and the open tab are remembered separately, in `sidebar.toml`.
 slackterm doctor
 ```
 
-checks what slackterm needs, one line each: what your terminal can show (pictures, Shift+Enter), the keychain, the session of every workspace, the config file, the browser for `login`, and mpv and yt-dlp for videos. Paste its output in a bug report.
+checks what slackterm needs, one line each: what your terminal can show (pictures, Shift+Enter, notifications), the keychain, the session of every workspace, the config file, the browser for `login`, and mpv and yt-dlp for videos. Paste its output in a bug report.
 
 The interface also writes `slackterm.log` (in `~/.local/share/slackterm/` on Linux, `~/Library/Application Support/slackterm/` on macOS), and keeps the previous run's as `slackterm.old.log` in case that one crashed. It holds what slackterm did — Slack methods called, real-time connection, errors — but never tokens, cookies or what people write. `--debug` adds every call to Slack; `SLACKTERM_LOG` sets any level, as `RUST_LOG` does.
 

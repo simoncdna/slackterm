@@ -186,6 +186,15 @@ pub async fn doctor(store: &SystemStore, api_base: &str, config_path: &Path) -> 
                     "same as Enter here: Alt+Enter or Ctrl+J for a new line",
                 );
             }
+            match crate::platform::Notifier::detect() {
+                crate::platform::Notifier::Bell => report(
+                    Check::Missing,
+                    "Notifications",
+                    "only the terminal's bell here (Kitty, Ghostty, iTerm2, WezTerm and \
+                     foot show them, and notify-send on Linux)",
+                ),
+                notifier => report(Check::Ok, "Notifications", notifier.describe()),
+            }
         }
         None => report(
             Check::Missing,

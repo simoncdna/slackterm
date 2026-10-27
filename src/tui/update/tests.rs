@@ -141,7 +141,16 @@ fn messages_from_unknown_channels_reload_the_list() {
             message: message("3.0", "U3", "hi"),
         }),
     );
-    assert_eq!(commands, [Command::LoadConversations]);
+    assert_eq!(
+        commands,
+        [
+            Command::LoadConversations,
+            Command::Notify {
+                title: "U3".into(),
+                body: "hi".into()
+            }
+        ]
+    );
 
     update(
         &mut app,
@@ -1542,4 +1551,123 @@ fn a_reply_links_to_its_thread() {
         ),
         "https://acme.slack.com/archives/C1/p2000200?thread_ts=1.000100&cid=C1"
     );
+}
+
+fn arrives(app: &mut App, channel: &str, message: Message) -> Vec<Command> {
+    update(
+        app,
+        Event::Rtm(RtmEvent::Message {
+            channel: channel.into(),
+            message,
+        }),
+    )
+}
+
+fn notifications(commands: &[Command]) -> Vec<(String, String)> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            Command::Notify { title, body } => Some((title.clone(), body.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn notified(title: &str, body: &str) -> Vec<(String, String)> {
+    vec![(title.to_string(), body.to_string())]
+}
+
+/// #general is on screen; Camille writes in a direct conversation.
+fn app_with_camille() -> App {
+    let mut app = loaded_app();
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Users(vec![
+            user("U2", "camille"),
+            user("UME", "simon"),
+        ])),
+    );
+    app
+}
+
+#[test]
+fn direct_messages_and_mentions_notify() {
+    let mut app = app_with_camille();
+    let commands = arrives(&mut app, "D1", message("3.0", "U2", "lunch?"));
+    assert_eq!(notifications(&commands), notified("camille", "lunch?"));
+
+    let commands = arrives(&mut app, "C2", message("4.0", "U2", "<@UME> can you look?"));
+    assert_eq!(
+        notifications(&commands),
+        notified("camille in #random", "@simon can you look?")
+    );
+
+    // Other messages in channels only mark them unread.
+    let commands = arrives(&mut app, "C2", message("5.0", "U2", "deploying now"));
+    assert_eq!(notifications(&commands), []);
+}
+
+#[test]
+fn what_the_user_reads_does_not_notify() {
+    let mut app = app_with_camille();
+    let commands = arrives(&mut app, "C1", message("3.0", "U2", "<@UME> look"));
+    assert_eq!(notifications(&commands), []);
+
+    // In another window, or another workspace, the user does not see it.
+    app.terminal_focused = false;
+    let commands = arrives(&mut app, "C1", message("4.0", "U2", "<@UME> look"));
+    assert_eq!(notifications(&commands).len(), 1);
+    app.terminal_focused = true;
+    app.visible = false;
+    let commands = arrives(&mut app, "C1", message("5.0", "U2", "<@UME> look"));
+    assert_eq!(notifications(&commands).len(), 1);
+}
+
+#[test]
+fn thread_replies_notify_unless_the_thread_is_open() {
+    let mut app = app_with_camille();
+    let mut reply = message("3.0", "U2", "<@UME> what do you think?");
+    reply.thread_ts = Some("2.0".into());
+    let commands = arrives(&mut app, "C1", reply.clone());
+    assert_eq!(notifications(&commands).len(), 1);
+
+    app.focus = Focus::Messages;
+    update(&mut app, key(KeyCode::Char('t')));
+    assert!(app.thread.as_ref().is_some_and(|t| t.ts == "2.0"));
+    reply.ts = "4.0".into();
+    let commands = arrives(&mut app, "C1", reply);
+    assert_eq!(notifications(&commands), []);
+}
+
+#[test]
+fn quiet_for_own_messages_muted_conversations_and_when_off() {
+    let mut app = app_with_camille();
+    let commands = arrives(&mut app, "D1", message("3.0", "UME", "sent from my phone"));
+    assert_eq!(notifications(&commands), []);
+
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Muted(["D1".to_string(), "C2".to_string()].into())),
+    );
+    let commands = arrives(&mut app, "D1", message("4.0", "U2", "ping"));
+    assert_eq!(notifications(&commands), []);
+    // A mention gets through, as in Slack.
+    let commands = arrives(&mut app, "C2", message("5.0", "U2", "<@UME> ping"));
+    assert_eq!(notifications(&commands).len(), 1);
+
+    app.settings.notifications = crate::config::Notifications::Off;
+    let commands = arrives(&mut app, "C2", message("6.0", "U2", "<@UME> ping"));
+    assert_eq!(notifications(&commands), []);
+}
+
+#[test]
+fn notifications_name_the_workspace_when_there_are_several() {
+    let mut app = app_with_camille();
+    app.workspaces = vec![app.tab(), app.tab()];
+    let long = "word ".repeat(100);
+    let commands = arrives(&mut app, "D9", message("3.0", "U2", &long));
+    let [(title, body)] = notifications(&commands).try_into().unwrap();
+    assert_eq!(title, "camille · acme");
+    assert_eq!(body.chars().count(), 201);
+    assert!(body.ends_with('…'));
 }

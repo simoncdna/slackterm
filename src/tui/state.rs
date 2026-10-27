@@ -325,7 +325,7 @@ pub struct Editing {
     pub draft: Input,
 }
 
-pub const SETTINGS_ROWS: usize = 6;
+pub const SETTINGS_ROWS: usize = 7;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwitcherTarget {
@@ -442,6 +442,9 @@ pub struct App {
     pub workspace: usize,
     /// On screen. One in the background does not mark what arrives as read.
     pub visible: bool,
+    /// The terminal's window has the focus. Terminals that do not say so
+    /// count as focused.
+    pub terminal_focused: bool,
     /// Where the last frame drew things, for the mouse.
     pub screen: RefCell<ScreenMap>,
     /// Where the message being written is drawn, to show suggestions above.
@@ -503,6 +506,7 @@ impl App {
             workspaces: Vec::new(),
             workspace: 0,
             visible: true,
+            terminal_focused: true,
             screen: RefCell::new(ScreenMap::default()),
             composer_area: Cell::new(None),
             overlay: None,

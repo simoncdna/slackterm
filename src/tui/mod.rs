@@ -18,9 +18,10 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use crossterm::event::{
-    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event as TermEvent, KeyEventKind, KeyboardEnhancementFlags, MouseButton, MouseEventKind,
-    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+    EnableFocusChange, EnableMouseCapture, Event as TermEvent, KeyEventKind,
+    KeyboardEnhancementFlags, MouseButton, MouseEventKind, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::supports_keyboard_enhancement;
@@ -256,7 +257,7 @@ fn set_mouse_capture(on: bool) {
 /// Bracketed paste, and distinct Shift+Enter where the terminal supports
 /// it. Returns whether the latter is on.
 fn enter_interface_mode() -> bool {
-    let _ = execute!(stdout(), EnableBracketedPaste);
+    let _ = execute!(stdout(), EnableBracketedPaste, EnableFocusChange);
     let enhanced = supports_keyboard_enhancement().unwrap_or(false);
     if enhanced {
         let _ = execute!(
@@ -271,7 +272,7 @@ fn leave_interface_mode(enhanced: bool) {
     if enhanced {
         let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
     }
-    let _ = execute!(stdout(), DisableBracketedPaste);
+    let _ = execute!(stdout(), DisableBracketedPaste, DisableFocusChange);
 }
 
 async fn event_loop(
@@ -281,8 +282,11 @@ async fn event_loop(
     events: &mut UnboundedReceiver<(usize, Event)>,
 ) -> Result<()> {
     let mut terminal_events = TerminalEvents::spawn();
+    let notifier = platform::Notifier::detect();
+    tracing::info!(notifications = %notifier.describe(), "notifier chosen");
+    let mut focused = true;
     loop {
-        share_workspaces(instances, active);
+        share_workspaces(instances, active, focused);
         screen
             .terminal
             .draw(|frame| ui::draw(frame, &instances[active].app, screen.pictures))?;
@@ -299,6 +303,14 @@ async fn event_loop(
                         | MouseEventKind::ScrollUp
                         | MouseEventKind::ScrollDown
                 ) => (active, Event::Mouse(mouse)),
+                TermEvent::FocusGained => {
+                    focused = true;
+                    continue;
+                }
+                TermEvent::FocusLost => {
+                    focused = false;
+                    continue;
+                }
                 _ => continue,
             },
             Some(tagged) = events.recv() => tagged,
@@ -323,6 +335,11 @@ async fn event_loop(
                         Ok(()) => format!("{what} copied"),
                         Err(e) => format!("could not copy the {what}: {e}"),
                     });
+                }
+                Command::Notify { title, body } => {
+                    if let Err(e) = notifier.notify(&title, &body) {
+                        tracing::warn!(error = %e, "notification not shown");
+                    }
                 }
                 Command::NextWorkspace => {
                     let next = (active + 1) % instances.len();
@@ -359,13 +376,15 @@ async fn event_loop(
     }
 }
 
-/// Tells every workspace about the others, and which one is on screen.
-fn share_workspaces(instances: &mut [Instance<'_>], active: usize) {
+/// Tells every workspace about the others, which one is on screen, and
+/// whether the terminal has the focus.
+fn share_workspaces(instances: &mut [Instance<'_>], active: usize, focused: bool) {
     let tabs: Vec<_> = instances.iter().map(|i| i.app.tab()).collect();
     for (index, instance) in instances.iter_mut().enumerate() {
         instance.app.workspaces = tabs.clone();
         instance.app.workspace = index;
         instance.app.visible = index == active;
+        instance.app.terminal_focused = focused;
     }
 }
 

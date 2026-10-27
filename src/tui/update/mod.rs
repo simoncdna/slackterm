@@ -6,7 +6,9 @@ use std::path::PathBuf;
 
 use crossterm::event::{KeyEvent, MouseEvent};
 
-use crate::config::{AvatarStyle, Choice, Layout, Settings, SidebarState, SidebarTab};
+use crate::config::{
+    AvatarStyle, Choice, Layout, Notifications, Settings, SidebarState, SidebarTab,
+};
 use crate::slack::media::{self, Playable};
 use crate::slack::rtm::RtmEvent;
 use crate::slack::{
@@ -16,8 +18,9 @@ use crate::slack::{
 use super::compose;
 use super::input::Input;
 use super::state::{
-    App, Channel, Connection, Editing, EmojiPicker, Focus, History, Jump, Mode, Overlay,
-    ReactionTarget, SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget, Thread,
+    App, Channel, ChannelKind, Connection, Editing, EmojiPicker, Focus, History, Jump, Mode,
+    Overlay, ReactionTarget, SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget,
+    Thread,
 };
 
 // Events are few and short-lived; boxing the large variants would only add noise.
@@ -154,6 +157,12 @@ pub enum Command {
     Copy {
         text: String,
         what: &'static str,
+    },
+    /// Announce a message on the desktop. Run by the event loop, which owns
+    /// the terminal.
+    Notify {
+        title: String,
+        body: String,
     },
     Search(String),
     LoadEmoji,
@@ -567,6 +576,76 @@ fn on_rtm(app: &mut App, event: RtmEvent) -> Vec<Command> {
 }
 
 fn on_message(app: &mut App, channel: String, message: Message) -> Vec<Command> {
+    let notification = notification(app, &channel, &message);
+    let mut commands = receive(app, channel, message);
+    commands.extend(notification);
+    commands
+}
+
+/// A direct message or a mention, announced unless the user is looking at
+/// it, as Slack does.
+fn notification(app: &App, channel: &str, message: &Message) -> Option<Command> {
+    if app.settings.notifications == Notifications::Off
+        || message.user.as_deref() == Some(app.my_id.as_str())
+    {
+        return None;
+    }
+    let known = app.channel(channel);
+    // Slack names direct conversations it has not listed yet with a D.
+    let direct = known.map_or(channel.starts_with('D'), Channel::is_direct);
+    let muted = known.is_some_and(|c| c.muted);
+    let wanted = mrkdwn::mentions(&message.text, &app.my_id) || (direct && !muted);
+    if !wanted {
+        return None;
+    }
+    let shown = if message.is_thread_reply() {
+        app.thread.as_ref().is_some_and(|thread| {
+            thread.channel == channel && message.thread_ts.as_deref() == Some(&thread.ts)
+        })
+    } else {
+        app.current.as_deref() == Some(channel)
+    };
+    if shown && app.visible && app.terminal_focused {
+        return None;
+    }
+
+    let author = app.author(message);
+    let mut title = match known {
+        Some(c) if c.kind != ChannelKind::Direct => {
+            format!("{author} in {}", app.channel_label(c))
+        }
+        _ => author,
+    };
+    if app.workspaces.len() > 1 {
+        title = format!("{title} · {}", app.team_name);
+    }
+    let text: String = mrkdwn::parse(&message.text, &app.my_id, app)
+        .into_iter()
+        .map(|segment| segment.text)
+        .collect();
+    let body = if !text.trim().is_empty() {
+        truncate(text.trim(), NOTIFICATION_LENGTH)
+    } else if let Some(file) = message.files.first() {
+        format!("sent {}", file.name)
+    } else {
+        String::new()
+    };
+    Some(Command::Notify { title, body })
+}
+
+/// Characters of a message shown in its notification.
+const NOTIFICATION_LENGTH: usize = 200;
+
+fn truncate(text: &str, length: usize) -> String {
+    match text.char_indices().nth(length) {
+        Some((end, _)) => format!("{}…", &text[..end]),
+        None => text.to_string(),
+    }
+}
+
+/// Files the message where it goes, and marks it unread unless the user
+/// is reading the conversation.
+fn receive(app: &mut App, channel: String, message: Message) -> Vec<Command> {
     if message.is_thread_reply() {
         if let Some(thread) = &mut app.thread
             && thread.channel == channel
