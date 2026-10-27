@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Try slackterm without an account
+    url: https://github.com/simoncdna/slackterm#try-it-without-an-account
+    about: "`slackterm demo` opens a made-up workspace: handy to check whether something happens there too."

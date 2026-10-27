@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in slackterm does not work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A screenshot helps when it is about the display.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `slackterm doctor`
+      description: Run it in the terminal where the bug happens. It holds no token; you may hide your name and workspace's.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: >-
+        If slackterm crashed or misbehaved, the end of `slackterm.log` (doctor says where it is; after a crash,
+        `slackterm.old.log` is the run that crashed). It holds what slackterm did, never tokens nor messages.
+        Starting slackterm with `--debug` adds every call to Slack.
+      render: text
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options:
+        - Homebrew
+        - The install script
+        - cargo install
+        - A binary from the releases page
+        - Built from source
+    validations:
+      required: true

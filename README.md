@@ -331,6 +331,10 @@ cargo publish
 
 The release notes on GitHub come from that version's part of [CHANGELOG.md](CHANGELOG.md).
 
+## Contributing
+
+Issues and pull requests are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) explains how to build, test and find your way in the code.
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or [MIT license](LICENSE-MIT), at your option.
