@@ -1780,3 +1780,50 @@ fn a_path_pasted_while_editing_is_text() {
     assert!(app.input.text().ends_with("shot.png"));
     assert!(app.attached().is_empty());
 }
+
+fn marked(channel: &str, ts: &str, unread: Option<u64>, mentions: Option<u64>) -> Event {
+    Event::Rtm(RtmEvent::Marked {
+        channel: channel.into(),
+        ts: ts.into(),
+        unread,
+        mentions,
+    })
+}
+
+#[test]
+fn what_is_read_elsewhere_is_read_here() {
+    let mut app = loaded_app();
+    arrives(&mut app, "D1", message("3.0", "U2", "lunch?"));
+    arrives(&mut app, "D1", message("4.0", "U2", "at noon"));
+    let state = |app: &App| {
+        let c = app.channel("D1").unwrap();
+        (c.unread, c.mentions)
+    };
+    assert_eq!(state(&app), (true, 2));
+
+    // Read on the phone up to the first one: Slack says one is left.
+    update(&mut app, marked("D1", "3.0", Some(1), Some(1)));
+    assert_eq!(state(&app), (true, 1));
+    update(&mut app, marked("D1", "4.0", Some(0), Some(0)));
+    assert_eq!(state(&app), (false, 0));
+
+    // Without counts, the timestamp tells.
+    arrives(&mut app, "D1", message("5.0", "U2", "?"));
+    update(&mut app, marked("D1", "4.0", None, None));
+    assert!(state(&app).0);
+    update(&mut app, marked("D1", "5.0", None, None));
+    assert_eq!(state(&app), (false, 0));
+}
+
+#[test]
+fn changes_made_elsewhere_reload_the_list_and_mutes() {
+    let mut app = loaded_app();
+    assert_eq!(
+        update(&mut app, Event::Rtm(RtmEvent::ConversationsChanged)),
+        [Command::LoadConversations]
+    );
+    assert_eq!(
+        update(&mut app, Event::Rtm(RtmEvent::MutedChanged)),
+        [Command::LoadMuted]
+    );
+}

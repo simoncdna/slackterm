@@ -19,6 +19,7 @@ What changes from one version of slackterm to the next. The format follows [Keep
 ### Changed
 
 - Folded sections and the open tab are remembered for each workspace.
+- What you do in Slack's other apps shows at once: conversations read there are read here too, and so do conversations joined, left, renamed or muted.
 - The other workspaces show above the sidebar rather than in the status bar, which keeps room for the keys.
 
 ## [0.2.0] - 2026-10-20

@@ -49,6 +49,19 @@ pub enum RtmEvent {
         name: String,
         user: String,
     },
+    /// The user read a conversation up to `ts`, maybe in another client.
+    /// Slack says what is left unread, when it does.
+    Marked {
+        channel: String,
+        ts: String,
+        unread: Option<u64>,
+        mentions: Option<u64>,
+    },
+    /// The user joined, left or opened a conversation, or one was renamed
+    /// or archived.
+    ConversationsChanged,
+    /// The user muted or unmuted a conversation.
+    MutedChanged,
     /// Slack no longer accepts the session, so reconnecting stopped.
     SessionExpired,
 }
@@ -197,6 +210,28 @@ pub fn parse(event: &Value) -> Option<RtmEvent> {
                 }
             })
         }
+        "channel_marked" | "group_marked" | "im_marked" | "mpim_marked" => Some(RtmEvent::Marked {
+            channel: event["channel"].as_str()?.to_string(),
+            ts: event["ts"].as_str()?.to_string(),
+            unread: event["unread_count_display"].as_u64(),
+            mentions: event["mention_count_display"]
+                .as_u64()
+                .or_else(|| event["num_mentions_display"].as_u64()),
+        }),
+        "channel_joined" | "channel_left" | "channel_rename" | "channel_archive"
+        | "channel_unarchive" | "channel_deleted" | "group_joined" | "group_left"
+        | "group_rename" | "group_archive" | "group_unarchive" | "im_created" | "im_open"
+        | "im_close" | "mpim_joined" | "mpim_open" | "mpim_close" => {
+            Some(RtmEvent::ConversationsChanged)
+        }
+        "pref_change"
+            if matches!(
+                event["name"].as_str(),
+                Some("muted_channels" | "all_notifications_prefs")
+            ) =>
+        {
+            Some(RtmEvent::MutedChanged)
+        }
         _ => None,
     }
 }
@@ -249,6 +284,27 @@ mod tests {
             "item": {"type": "file", "file": "F1"}
         });
         assert!(parse(&on_file).is_none());
+    }
+
+    #[test]
+    fn follows_what_other_clients_do() {
+        let read = json!({
+            "type": "im_marked", "channel": "D1", "ts": "5.0",
+            "unread_count_display": 0, "mention_count_display": 0
+        });
+        assert!(matches!(
+            parse(&read),
+            Some(RtmEvent::Marked { channel, unread: Some(0), .. }) if channel == "D1"
+        ));
+        let joined = json!({"type": "channel_joined", "channel": {"id": "C9"}});
+        assert!(matches!(
+            parse(&joined),
+            Some(RtmEvent::ConversationsChanged)
+        ));
+        let muted = json!({"type": "pref_change", "name": "muted_channels", "value": "C1"});
+        assert!(matches!(parse(&muted), Some(RtmEvent::MutedChanged)));
+        let theme = json!({"type": "pref_change", "name": "theme", "value": "dark"});
+        assert!(parse(&theme).is_none());
     }
 
     #[test]

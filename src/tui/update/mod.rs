@@ -579,6 +579,27 @@ fn on_rtm(app: &mut App, event: RtmEvent) -> Vec<Command> {
             app.connection = Connection::Reconnecting { in_secs, reason }
         }
         RtmEvent::Message { channel, message } => return on_message(app, channel, message),
+        RtmEvent::Marked {
+            channel,
+            ts,
+            unread,
+            mentions,
+        } => {
+            if let Some(known) = app.channel_mut(&channel) {
+                let all_read = match unread {
+                    Some(count) => count == 0,
+                    None => ts >= known.latest,
+                };
+                if all_read {
+                    known.unread = false;
+                    known.mentions = 0;
+                } else if let Some(mentions) = mentions {
+                    known.mentions = mentions as u32;
+                }
+            }
+        }
+        RtmEvent::ConversationsChanged => return vec![Command::LoadConversations],
+        RtmEvent::MutedChanged => return vec![Command::LoadMuted],
         RtmEvent::MessageChanged { channel, message } => {
             for messages in messages_of(app, &channel) {
                 if let Some(existing) = messages.iter_mut().find(|m| m.ts == message.ts) {
