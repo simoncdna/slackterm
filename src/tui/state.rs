@@ -724,6 +724,32 @@ impl App {
             .unwrap_or(0)
     }
 
+    /// The next conversation with unread messages after the one open, in
+    /// the order of the sidebar's sections, starting over at the top.
+    pub fn next_unread(&self) -> Option<String> {
+        let order: Vec<usize> = self
+            .section_rows()
+            .into_iter()
+            .filter_map(|row| match row {
+                SidebarRow::Channel(index) => Some(index),
+                SidebarRow::Section { .. } => None,
+            })
+            .collect();
+        let start = self
+            .current
+            .as_ref()
+            .and_then(|id| order.iter().position(|&i| self.channels[i].id == *id))
+            .map_or(0, |position| position + 1);
+        order
+            .iter()
+            .cycle()
+            .skip(start)
+            .take(order.len())
+            .map(|&i| &self.channels[i])
+            .find(|c| c.unread && self.current.as_deref() != Some(c.id.as_str()))
+            .map(|c| c.id.clone())
+    }
+
     /// Indices in `channels` of the ones shown in the sidebar, in order.
     #[cfg(test)]
     pub fn listed_indices(&self) -> Vec<usize> {

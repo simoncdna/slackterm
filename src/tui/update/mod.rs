@@ -145,6 +145,9 @@ pub enum Command {
     SwitchWorkspace(usize),
     /// Open this workspace (team id) next time.
     RememberWorkspace(String),
+    /// Show the next workspace with unread messages, and open them. Run by
+    /// the event loop.
+    NextUnreadWorkspace,
     Search(String),
     LoadEmoji,
     /// Profile pictures to fetch: user id and picture URL.
@@ -627,6 +630,25 @@ fn insert_message(messages: &mut Vec<Message>, message: Message) {
         Ok(index) => messages[index] = message,
         Err(index) => messages.insert(index, message),
     }
+}
+
+/// Opens the next conversation with unread messages: in this workspace,
+/// else in the next workspace that has some.
+pub fn open_next_unread(app: &mut App) -> Vec<Command> {
+    if let Some(id) = app.next_unread() {
+        app.focus = Focus::Messages;
+        return open_channel(app, &id);
+    }
+    let elsewhere = app
+        .workspaces
+        .iter()
+        .enumerate()
+        .any(|(index, tab)| index != app.workspace && tab.unread);
+    if elsewhere {
+        return vec![Command::NextUnreadWorkspace];
+    }
+    app.notice = Some("nothing unread".into());
+    Vec::new()
 }
 
 /// The workspace comes on screen: what arrived meanwhile in the open

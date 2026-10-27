@@ -56,6 +56,7 @@ fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Action::NextWorkspace if app.workspaces.len() > 1 => {
             return vec![Command::NextWorkspace];
         }
+        Action::NextUnread => return open_next_unread(app),
         Action::Write if app.current.is_some() => {
             if app.focus == Focus::Sidebar {
                 app.focus = Focus::Messages;

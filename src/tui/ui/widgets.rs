@@ -1162,6 +1162,7 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
     };
     hints.extend([
         (keys.hint(Action::GoTo), "go to"),
+        (keys.hint(Action::NextUnread), "next unread"),
         (keys.hint(Action::Search), "search"),
         (keys.hint(Action::Settings), "settings"),
         (

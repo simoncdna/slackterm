@@ -300,6 +300,22 @@ async fn event_loop(
                     active = show(instances, active, next);
                 }
                 Command::SwitchWorkspace(to) => active = show(instances, active, to),
+                Command::NextUnreadWorkspace => {
+                    let count = instances.len();
+                    let next = (1..count)
+                        .map(|step| (active + step) % count)
+                        .find(|&i| instances[i].app.tab().unread);
+                    if let Some(next) = next {
+                        active = show(instances, active, next);
+                        let instance = &mut instances[active];
+                        // Only this workspace: it has unread messages.
+                        for command in update::open_next_unread(&mut instance.app) {
+                            if command != Command::NextUnreadWorkspace {
+                                (instance.execute)(command);
+                            }
+                        }
+                    }
+                }
                 command => (instances[index].execute)(command),
             }
         }

@@ -280,7 +280,7 @@ mod tests {
         with_react_on_z(&mut app);
         app.overlay = Some(Overlay::Help { scroll: 0 });
 
-        let text = screen(&app, 100, 50);
+        let text = screen(&app, 100, 60);
 
         assert!(text.contains("Anywhere"), "{text}");
         assert!(

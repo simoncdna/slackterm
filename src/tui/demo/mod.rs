@@ -214,7 +214,8 @@ impl Demo {
             | Command::SaveSidebar { .. }
             | Command::NextWorkspace
             | Command::SwitchWorkspace(_)
-            | Command::RememberWorkspace(_) => {}
+            | Command::RememberWorkspace(_)
+            | Command::NextUnreadWorkspace => {}
             Command::LoadMuted => send(ApiEvent::Muted(content::muted())),
             Command::LoadPublicChannels => send(ApiEvent::PublicChannels(
                 self.state().content.public_channels.clone(),

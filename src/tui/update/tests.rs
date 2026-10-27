@@ -1464,3 +1464,39 @@ fn the_switcher_goes_to_another_workspace() {
         "{commands:?}"
     );
 }
+
+fn receive(app: &mut App, channel: &str, ts: &str) {
+    update(
+        app,
+        Event::Rtm(RtmEvent::Message {
+            channel: channel.into(),
+            message: message(ts, "U2", "news"),
+        }),
+    );
+}
+
+#[test]
+fn n_goes_through_unread_conversations_in_sidebar_order() {
+    let mut app = loaded_app();
+    receive(&mut app, "D1", "7.0");
+    receive(&mut app, "C2", "8.0");
+
+    update(&mut app, key(KeyCode::Char('n')));
+    assert_eq!(app.current.as_deref(), Some("C2"));
+    update(&mut app, key(KeyCode::Char('n')));
+    assert_eq!(app.current.as_deref(), Some("D1"));
+
+    let commands = update(&mut app, key(KeyCode::Char('n')));
+    assert!(commands.is_empty());
+    assert_eq!(app.notice.as_deref(), Some("nothing unread"));
+}
+
+#[test]
+fn n_moves_on_to_another_workspace_once_this_one_is_read() {
+    let mut app = loaded_app();
+    with_two_workspaces(&mut app);
+    assert_eq!(
+        update(&mut app, key(KeyCode::Char('n'))),
+        [Command::NextUnreadWorkspace]
+    );
+}

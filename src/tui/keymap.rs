@@ -23,6 +23,7 @@ pub enum Action {
     FocusMessages,
     FocusThread,
     NextWorkspace,
+    NextUnread,
     Write,
     Down,
     Up,
@@ -122,6 +123,13 @@ pub const ACTIONS: &[Definition] = &[
         Anywhere,
         &["w"],
         "Next workspace, when signed in to several",
+    ),
+    define(
+        NextUnread,
+        "next_unread",
+        Anywhere,
+        &["n"],
+        "Next conversation with unread messages, in any workspace",
     ),
     define(
         Write,

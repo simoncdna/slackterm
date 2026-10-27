@@ -232,7 +232,9 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             ApiEvent::Deleted { channel, ts }
         }
         // Run by the event loop.
-        Command::NextWorkspace | Command::SwitchWorkspace(_) => return Ok(None),
+        Command::NextWorkspace | Command::SwitchWorkspace(_) | Command::NextUnreadWorkspace => {
+            return Ok(None);
+        }
         Command::RememberWorkspace(team) => {
             SidebarFile::save_workspace(&team)
                 .map_err(|e| Failure::Other(format!("sidebar: {e:#}")))?;
