@@ -114,24 +114,39 @@ const ACCOUNT: &str = "session";
 
 impl Keychain for Keyring {
     fn set(&self, secret: &str) -> Result<()> {
-        keyring::Entry::new(SERVICE, ACCOUNT)?.set_password(secret)?;
-        Ok(())
+        entry()?.set_password(secret).map_err(explain)
     }
 
     fn get(&self) -> Result<Option<String>> {
-        match keyring::Entry::new(SERVICE, ACCOUNT)?.get_password() {
+        match entry()?.get_password() {
             Ok(secret) => Ok(Some(secret)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(explain(e)),
         }
     }
 
     fn delete(&self) -> Result<bool> {
-        match keyring::Entry::new(SERVICE, ACCOUNT)?.delete_credential() {
+        match entry()?.delete_credential() {
             Ok(()) => Ok(true),
             Err(keyring::Error::NoEntry) => Ok(false),
-            Err(e) => Err(e.into()),
+            Err(e) => Err(explain(e)),
         }
+    }
+}
+
+fn entry() -> Result<keyring::Entry> {
+    keyring::Entry::new(SERVICE, ACCOUNT).map_err(explain)
+}
+
+/// Says what is missing when there is no keychain, which `keyring` words
+/// as "No default store has been set".
+fn explain(error: keyring::Error) -> anyhow::Error {
+    match error {
+        keyring::Error::NoDefaultStore => anyhow::anyhow!(
+            "no system keychain found; on Linux, that is a Secret Service such as GNOME \
+             Keyring or KWallet"
+        ),
+        error => error.into(),
     }
 }
 
