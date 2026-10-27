@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+
+PackageIdentifier: simoncdna.slackterm
+PackageVersion: 0.2.0
+PackageLocale: en-US
+Publisher: Simon Cardona
+PublisherUrl: https://github.com/simoncdna
+PublisherSupportUrl: https://github.com/simoncdna/slackterm/issues
+Author: Simon Cardona
+PackageName: slackterm
+PackageUrl: https://github.com/simoncdna/slackterm
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/simoncdna/slackterm#license
+ShortDescription: Slack in your terminal
+Description: |-
+  slackterm is a Slack client for the terminal: real time, threads, your sections,
+  search through the whole history and reactions, all from the keyboard.
+Moniker: slackterm
+Tags:
+- chat
+- cli
+- slack
+- terminal
+- tui
+ReleaseNotesUrl: https://github.com/simoncdna/slackterm/releases/tag/v0.2.0
+ManifestType: defaultLocale
+ManifestVersion: 1.10.0

@@ -1,0 +1,34 @@
+# Maintainer: Simon Cardona <simon.cdna@proton.me>
+
+pkgname=slackterm-bin
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Slack in your terminal: real time, threads, search and sections, all from the keyboard"
+arch=('x86_64' 'aarch64')
+url="https://github.com/simoncdna/slackterm"
+license=('MIT OR Apache-2.0')
+provides=('slackterm')
+conflicts=('slackterm')
+depends=('glibc' 'gcc-libs')
+# The binary is shipped as released: no stripping, no debug package.
+options=('!strip' '!debug')
+optdepends=(
+  'org.freedesktop.secrets: keep the session in the system keychain'
+  'mpv: play videos in the terminal'
+  'yt-dlp: play video links'
+)
+source_x86_64=("${url}/releases/download/v${pkgver}/slackterm-x86_64-unknown-linux-gnu.tar.xz")
+source_aarch64=("${url}/releases/download/v${pkgver}/slackterm-aarch64-unknown-linux-gnu.tar.xz")
+sha256sums_x86_64=('d4d20986689948ef27ac1b5ea2f55c38cab4514d26c97d01780f92e1bf81ccdb')
+sha256sums_aarch64=('bade23df12c5b1c44862c87b650991ab1ae5ae233424ab3c4c601d52b1f8b58f')
+
+package() {
+  cd "slackterm-${CARCH}-unknown-linux-gnu"
+  install -Dm755 slackterm "${pkgdir}/usr/bin/slackterm"
+  install -Dm644 LICENSE-MIT LICENSE-APACHE -t "${pkgdir}/usr/share/licenses/${pkgname}/"
+  install -Dm644 README.md CHANGELOG.md -t "${pkgdir}/usr/share/doc/${pkgname}/"
+
+  ./slackterm completions bash | install -Dm644 /dev/stdin "${pkgdir}/usr/share/bash-completion/completions/slackterm"
+  ./slackterm completions zsh | install -Dm644 /dev/stdin "${pkgdir}/usr/share/zsh/site-functions/_slackterm"
+  ./slackterm completions fish | install -Dm644 /dev/stdin "${pkgdir}/usr/share/fish/vendor_completions.d/slackterm.fish"
+}
