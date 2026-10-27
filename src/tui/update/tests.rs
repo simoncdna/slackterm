@@ -1827,3 +1827,40 @@ fn changes_made_elsewhere_reload_the_list_and_mutes() {
         [Command::LoadMuted]
     );
 }
+
+fn reply_to(parent: &str, ts: &str, user: &str, text: &str) -> Message {
+    let mut reply = message(ts, user, text);
+    reply.thread_ts = Some(parent.into());
+    reply
+}
+
+#[test]
+fn replies_in_the_users_threads_notify() {
+    let mut app = app_with_camille();
+    // A thread the user started.
+    let mut reply = reply_to("1.0", "3.0", "U2", "done");
+    reply.parent_user_id = Some("UME".into());
+    let commands = arrives(&mut app, "C1", reply);
+    assert_eq!(
+        notifications(&commands),
+        notified("camille replied in #general", "done")
+    );
+    assert!(app.unread_threads.contains("C1/1.0"));
+
+    // One the user replied in.
+    app.histories.get_mut("C1").unwrap().messages[1].reply_users = vec!["UME".into()];
+    let commands = arrives(&mut app, "C1", reply_to("2.0", "4.0", "U2", "and?"));
+    assert_eq!(notifications(&commands).len(), 1);
+
+    // Someone else's.
+    app.histories.get_mut("C1").unwrap().messages[1].reply_users = vec!["U3".into()];
+    let commands = arrives(&mut app, "C1", reply_to("2.0", "5.0", "U2", "ok"));
+    assert_eq!(notifications(&commands), []);
+
+    // The user's own replies are nothing new.
+    app.unread_threads.clear();
+    let mut mine = reply_to("1.0", "6.0", "UME", "thanks");
+    mine.parent_user_id = Some("UME".into());
+    arrives(&mut app, "C1", mine);
+    assert!(app.unread_threads.is_empty());
+}

@@ -194,6 +194,15 @@ pub struct Message {
     pub thread_ts: Option<String>,
     #[serde(default)]
     pub reply_count: u32,
+    /// Who replied in the thread this message starts.
+    #[serde(default)]
+    pub reply_users: Vec<String>,
+    /// The user follows the thread this message starts.
+    #[serde(default)]
+    pub subscribed: bool,
+    /// Who wrote the message a reply answers.
+    #[serde(default)]
+    pub parent_user_id: Option<String>,
     #[serde(default)]
     pub edited: Option<serde_json::Value>,
     #[serde(default)]
@@ -389,6 +398,9 @@ pub(crate) fn message(ts: &str, user: &str, text: &str) -> Message {
         subtype: None,
         thread_ts: None,
         reply_count: 0,
+        reply_users: Vec::new(),
+        subscribed: false,
+        parent_user_id: None,
         edited: None,
         reactions: Vec::new(),
         files: Vec::new(),

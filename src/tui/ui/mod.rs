@@ -310,6 +310,35 @@ mod tests {
     }
 
     #[test]
+    fn new_replies_show_on_the_threads_the_user_follows() {
+        let mut app = sample_app();
+        let parent = "1700000100.000000";
+        let history = app.histories.get_mut("C1").unwrap();
+        history.messages[1].subscribed = true;
+        let mut reply = message("1700000200.000000", "U2", "one more thing");
+        reply.thread_ts = Some(parent.into());
+        update(
+            &mut app,
+            Event::Rtm(crate::slack::rtm::RtmEvent::Message {
+                channel: "C1".into(),
+                message: reply,
+            }),
+        );
+        let text = screen(&app, 120, 30);
+        assert!(text.contains("2 replies · new"), "{text}");
+
+        app.focus = Focus::Messages;
+        update(
+            &mut app,
+            Event::Key(crossterm::event::KeyEvent::from(
+                crossterm::event::KeyCode::Char('t'),
+            )),
+        );
+        let text = screen(&app, 120, 30);
+        assert!(!text.contains("· new"), "{text}");
+    }
+
+    #[test]
     fn the_status_bar_shows_the_keys_in_use() {
         let mut app = sample_app();
         with_react_on_z(&mut app);

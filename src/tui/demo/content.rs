@@ -378,6 +378,8 @@ fn release(b: &mut Builder) {
         NATHAN,
         "Remember to turn off push notifications during the migration :pray:",
     );
+    // Followed, so that a reply arriving live shows as new.
+    b.message(&migration).subscribed = true;
 
     let visuals = b.post(
         RELEASE,
@@ -695,6 +697,9 @@ impl Builder {
         let parent = self.message(parent);
         parent.thread_ts = Some(parent.ts.clone());
         parent.reply_count += 1;
+        if !parent.reply_users.iter().any(|u| u == user) {
+            parent.reply_users.push(user.to_string());
+        }
     }
 
     fn react(&mut self, target: &Posted, name: &str, users: &[&str]) {
@@ -815,6 +820,9 @@ pub fn message(ts: &str, user: &str, text: &str) -> Message {
         subtype: None,
         thread_ts: None,
         reply_count: 0,
+        reply_users: Vec::new(),
+        subscribed: false,
+        parent_user_id: None,
         edited: None,
         reactions: Vec::new(),
         files: Vec::new(),

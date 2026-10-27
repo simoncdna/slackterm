@@ -251,7 +251,7 @@ notifications = "on"  # on | off
 
 With the mouse on, the wheel scrolls the list under the pointer, and a click opens a conversation, folds a section, switches tab or workspace, selects a message, or starts writing in the message box. To select text with the mouse anyway, hold Shift (Option in iTerm2), or set `mouse = "off"`.
 
-Notifications announce direct messages and mentions, in every workspace, unless you are reading that conversation in the terminal's active window; conversations you muted in Slack only notify for mentions. Kitty, Ghostty, iTerm2, WezTerm and foot show them themselves, over SSH too; elsewhere `osascript` (macOS) or `notify-send` (Linux) does, and the terminal's bell as a last resort. In tmux, slackterm uses the system's tool; over SSH in tmux, it needs `set -g allow-passthrough on`. `slackterm doctor` says which is used.
+Notifications announce direct messages, mentions and replies in the threads you started, replied in or follow, in every workspace, unless you are reading that conversation in the terminal's active window; conversations you muted in Slack only notify for mentions. Kitty, Ghostty, iTerm2, WezTerm and foot show them themselves, over SSH too; elsewhere `osascript` (macOS) or `notify-send` (Linux) does, and the terminal's bell as a last resort. In tmux, slackterm uses the system's tool; over SSH in tmux, it needs `set -g allow-passthrough on`. `slackterm doctor` says which is used.
 
 ### Keys
 

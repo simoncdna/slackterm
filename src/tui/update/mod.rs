@@ -237,6 +237,13 @@ pub fn update(app: &mut App, event: Event) -> Vec<Command> {
     };
     compose::follow_conversation(app);
     compose::refresh(app);
+    // A thread on screen has nothing new left in it.
+    if app.visible
+        && let Some(thread) = &app.thread
+    {
+        app.unread_threads
+            .remove(&draft_key(&thread.channel, Some(&thread.ts)));
+    }
     commands.extend(request_pictures(app));
     commands.extend(request_public_channels(app));
     commands
@@ -661,7 +668,9 @@ fn notification(app: &App, channel: &str, message: &Message) -> Option<Command> 
     // Slack names direct conversations it has not listed yet with a D.
     let direct = known.map_or(channel.starts_with('D'), Channel::is_direct);
     let muted = known.is_some_and(|c| c.muted);
-    let wanted = mrkdwn::mentions(&message.text, &app.my_id) || (direct && !muted);
+    let wanted = mrkdwn::mentions(&message.text, &app.my_id)
+        || (direct && !muted)
+        || follows_thread(app, channel, message);
     if !wanted {
         return None;
     }
@@ -677,11 +686,16 @@ fn notification(app: &App, channel: &str, message: &Message) -> Option<Command> 
     }
 
     let author = app.author(message);
+    let replied = if message.is_thread_reply() {
+        " replied"
+    } else {
+        ""
+    };
     let mut title = match known {
         Some(c) if c.kind != ChannelKind::Direct => {
-            format!("{author} in {}", app.channel_label(c))
+            format!("{author}{replied} in {}", app.channel_label(c))
         }
-        _ => author,
+        _ => format!("{author}{replied}"),
     };
     if app.workspaces.len() > 1 {
         title = format!("{title} · {}", app.team_name);
@@ -700,6 +714,40 @@ fn notification(app: &App, channel: &str, message: &Message) -> Option<Command> 
     Some(Command::Notify { title, body })
 }
 
+/// Whether the user takes part in the thread a reply belongs to: started
+/// it, replied in it or follows it, which is when Slack tells about replies.
+fn follows_thread(app: &App, channel: &str, reply: &Message) -> bool {
+    let me = app.my_id.as_str();
+    let Some(thread_ts) = reply
+        .thread_ts
+        .as_deref()
+        .filter(|_| reply.is_thread_reply())
+    else {
+        return false;
+    };
+    if reply.parent_user_id.as_deref() == Some(me) {
+        return true;
+    }
+    let parent = app
+        .histories
+        .get(channel)
+        .and_then(|history| history.messages.iter().find(|m| m.ts == thread_ts));
+    let in_parent = parent.is_some_and(|parent| {
+        parent.user.as_deref() == Some(me)
+            || parent.subscribed
+            || parent.reply_users.iter().any(|user| user == me)
+    });
+    let replied_here = app.thread.as_ref().is_some_and(|thread| {
+        thread.channel == channel
+            && thread.ts == thread_ts
+            && thread
+                .messages
+                .iter()
+                .any(|m| m.user.as_deref() == Some(me))
+    });
+    in_parent || replied_here
+}
+
 /// Characters of a message shown in its notification.
 const NOTIFICATION_LENGTH: usize = 200;
 
@@ -714,6 +762,14 @@ fn truncate(text: &str, length: usize) -> String {
 /// is reading the conversation.
 fn receive(app: &mut App, channel: String, message: Message) -> Vec<Command> {
     if message.is_thread_reply() {
+        let mine = message.user.as_deref() == Some(app.my_id.as_str());
+        if !mine
+            && follows_thread(app, &channel, &message)
+            && let Some(thread_ts) = &message.thread_ts
+        {
+            app.unread_threads
+                .insert(draft_key(&channel, Some(thread_ts)));
+        }
         if let Some(thread) = &mut app.thread
             && thread.channel == channel
             && message.thread_ts.as_deref() == Some(&thread.ts)

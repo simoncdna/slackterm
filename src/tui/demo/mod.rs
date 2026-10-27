@@ -345,7 +345,13 @@ impl State {
 
     /// Keeps a new message and returns what Slack would announce: the
     /// message, then its thread's parent with one more reply.
-    fn store(&mut self, channel: &str, message: Message) -> Vec<Event> {
+    fn store(&mut self, channel: &str, mut message: Message) -> Vec<Event> {
+        if let Some(parent_ts) = &message.thread_ts
+            && let Some(parent) = self.find(channel, parent_ts)
+        {
+            message.parent_user_id = parent.user.clone();
+        }
+        let author = message.user.clone();
         let mut events = vec![Event::Rtm(RtmEvent::Message {
             channel: channel.to_string(),
             message: message.clone(),
@@ -361,6 +367,11 @@ impl State {
         {
             parent.thread_ts = Some(parent.ts.clone());
             parent.reply_count += 1;
+            if let Some(author) = author
+                && !parent.reply_users.contains(&author)
+            {
+                parent.reply_users.push(author);
+            }
             events.push(Event::Rtm(RtmEvent::MessageChanged {
                 channel: channel.to_string(),
                 message: parent.clone(),

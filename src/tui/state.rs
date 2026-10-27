@@ -447,6 +447,9 @@ pub struct App {
     /// Files to send, by [`draft_key`], so that each conversation and
     /// thread keeps its own.
     pub attachments: HashMap<String, Vec<Attachment>>,
+    /// Threads the user takes part in with replies not seen yet, by
+    /// [`draft_key`].
+    pub unread_threads: HashSet<String>,
     /// Every workspace the user is signed in to, this one included.
     pub workspaces: Vec<WorkspaceTab>,
     /// This workspace's place in `workspaces`.
@@ -515,6 +518,7 @@ impl App {
             drafts: HashMap::new(),
             draft_key: None,
             attachments: HashMap::new(),
+            unread_threads: HashSet::new(),
             workspaces: Vec::new(),
             workspace: 0,
             visible: true,

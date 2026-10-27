@@ -18,6 +18,7 @@ use crate::tui::keymap::Action;
 use crate::tui::pictures::{AVATAR_SIZE, Pictures};
 use crate::tui::state::{
     App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow, WorkspaceTab,
+    draft_key,
 };
 
 use crate::tui::theme::Theme;
@@ -302,10 +303,18 @@ impl MessagePiece<'_> {
         if self.message.has_thread() && !self.in_thread {
             let count = self.message.reply_count;
             let replies = if count == 1 { "reply" } else { "replies" };
-            rows.push(vec![Span::styled(
+            let mut row = vec![Span::styled(
                 format!("↳ {count} {replies}"),
                 Style::new().fg(theme.link),
-            )]);
+            )];
+            let new = self.app.current.as_deref().is_some_and(|channel| {
+                let key = draft_key(channel, Some(&self.message.ts));
+                self.app.unread_threads.contains(&key)
+            });
+            if new {
+                row.push(Span::styled(" · new", Style::new().fg(theme.unread).bold()));
+            }
+            rows.push(row);
         }
         rows
     }

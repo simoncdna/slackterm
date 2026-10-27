@@ -164,8 +164,8 @@ impl Choice for Mouse {
     }
 }
 
-/// Whether direct messages and mentions are announced on the desktop while
-/// you look elsewhere.
+/// Whether direct messages, mentions and replies in the user's threads are
+/// announced on the desktop while they look elsewhere.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Notifications {
@@ -178,7 +178,7 @@ impl Choice for Notifications {
     const ALL: &'static [Self] = &[Self::On, Self::Off];
     fn label(self) -> &'static str {
         match self {
-            Self::On => "direct messages and mentions",
+            Self::On => "direct messages, mentions, threads",
             Self::Off => "off",
         }
     }

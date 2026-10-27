@@ -13,7 +13,8 @@ What changes from one version of slackterm to the next. The format follows [Keep
 - The mouse: the wheel scrolls, a click opens, selects or starts writing. `mouse = "off"` gives text selection back to the terminal.
 - Send files: drop them on the terminal, or paste their path, and they go with the next message.
 - Emoji suggested as you type `:` and two letters of their name, custom ones included.
-- Notifications for direct messages and mentions, from every workspace, unless you are reading the conversation. The terminal shows them where it can, over SSH too, else the system does; `notifications = "off"` turns them off.
+- Notifications for direct messages, mentions and replies in your threads, from every workspace, unless you are reading the conversation.
+- New replies in the threads you started, replied in or follow show as `new` until you open them. The terminal shows them where it can, over SSH too, else the system does; `notifications = "off"` turns them off.
 - Static Linux builds, linked with musl, for x86_64 and ARM: they run on any distribution, and the install script picks them where the usual ones would not.
 
 ### Changed
