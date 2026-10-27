@@ -319,7 +319,7 @@ mod tests {
     }
 
     #[test]
-    fn the_status_bar_shows_the_other_workspaces() {
+    fn every_layout_shows_the_other_workspaces() {
         let mut app = sample_app();
         let tab = |name: &str, mentions| crate::tui::state::WorkspaceTab {
             name: name.into(),
@@ -328,7 +328,10 @@ mod tests {
         };
         app.workspaces = vec![tab("acme", 0), tab("side", 2), tab("perso", 0)];
         let text = screen(&app, 160, 30);
-        assert!(text.contains("⇄ side @2 perso"), "{text}");
+        assert!(text.contains(" acme  side @2  perso"), "{text}");
+        app.settings.layout = Layout::Focus;
+        let text = screen(&app, 160, 30);
+        assert!(text.contains("⇄ side @2   ⇄ perso"), "{text}");
     }
 
     #[test]

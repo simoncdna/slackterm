@@ -14,8 +14,8 @@ use crate::tui::theme::Theme;
 
 use super::text::truncate;
 use super::widgets::{
-    InputStyle, MessageStyle, SidebarStyle, input_box, input_height, message_lines, panel,
-    render_messages, separator, sidebar, status_bar,
+    InputStyle, MessageStyle, SidebarStyle, input_box, input_height, message_lines,
+    other_workspaces, panel, render_messages, separator, sidebar, status_bar,
 };
 
 fn channel_title(app: &App) -> String {
@@ -416,7 +416,10 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Picture
         .filter_map(|(action, label)| Some(format!("{} {label}", app.keymap.hint(action)?)))
         .collect::<Vec<_>>()
         .join("   ");
-    let room = (header_inner.width as usize).saturating_sub(hint.width() + 2);
+    let mut right = other_workspaces(app, theme);
+    right.push(Span::styled(hint, Style::new().fg(theme.muted)));
+    let right_width: usize = right.iter().map(|s| s.content.width()).sum();
+    let room = (header_inner.width as usize).saturating_sub(right_width + 2);
     let title = channel_title(app);
     let left = vec![
         Span::styled(title.clone(), Style::new().fg(theme.accent).bold()),
@@ -425,14 +428,11 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Picture
             Style::new().fg(theme.muted),
         ),
     ];
-    let [left_area, hint_area] =
-        Layout::horizontal([Constraint::Fill(1), Constraint::Length(hint.width() as u16)])
+    let [left_area, right_area] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(right_width as u16)])
             .areas(header_inner);
     frame.render_widget(Paragraph::new(Line::from(left)), left_area);
-    frame.render_widget(
-        Paragraph::new(Line::styled(hint, Style::new().fg(theme.muted))),
-        hint_area,
-    );
+    frame.render_widget(Paragraph::new(Line::from(right)), right_area);
 
     let messages = messages.inner(ratatui::layout::Margin::new(2, 1));
     channel_messages(frame, messages, app, theme, MessageStyle::Focus, pictures);

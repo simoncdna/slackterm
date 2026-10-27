@@ -663,6 +663,15 @@ pub fn sidebar(
     focused: bool,
     style: SidebarStyle,
 ) {
+    let workspaces = workspace_bar(app, theme);
+    let [workspaces_area, area] = Layout::vertical([
+        Constraint::Length(u16::from(workspaces.is_some())),
+        Constraint::Fill(1),
+    ])
+    .areas(area);
+    if let Some(line) = workspaces {
+        frame.render_widget(Paragraph::new(line), workspaces_area);
+    }
     if !app.channels_loaded {
         let text = Line::styled("loading…", Style::new().fg(theme.muted));
         frame.render_widget(Paragraph::new(text), area);
@@ -718,6 +727,48 @@ pub fn sidebar(
         .min(rows.len().saturating_sub(height));
     let visible: Vec<Line> = rows.into_iter().skip(start).take(height).collect();
     frame.render_widget(Paragraph::new(visible), area);
+}
+
+/// The workspaces, when the user is signed in to several: this one in the
+/// accent, the others with a badge when something waits there.
+fn workspace_bar(app: &App, theme: &Theme) -> Option<Line<'static>> {
+    if app.workspaces.len() < 2 {
+        return None;
+    }
+    let mut spans = Vec::new();
+    for (index, tab) in app.workspaces.iter().enumerate() {
+        if index == app.workspace {
+            spans.push(Span::styled(
+                format!(" {}", tab.name),
+                Style::new().fg(theme.accent).bold(),
+            ));
+        } else {
+            spans.push(Span::styled(
+                format!(" {}", tab.name),
+                Style::new().fg(theme.muted),
+            ));
+            spans.extend(super::overlays::workspace_badge(tab, theme));
+        }
+        spans.push(Span::raw(" "));
+    }
+    Some(Line::from(spans))
+}
+
+/// `⇄ Weekend Builders @1`: the other workspaces, for a layout without a
+/// sidebar.
+pub fn other_workspaces(app: &App, theme: &Theme) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for (index, tab) in app.workspaces.iter().enumerate() {
+        if index != app.workspace {
+            spans.push(Span::styled(
+                format!("⇄ {}", tab.name),
+                Style::new().fg(theme.muted),
+            ));
+            spans.extend(super::overlays::workspace_badge(tab, theme));
+            spans.push(Span::raw("   "));
+        }
+    }
+    spans
 }
 
 fn epoch_of(ts: &str) -> Option<i64> {
@@ -1005,23 +1056,10 @@ pub fn status_bar(
     if app.thread.is_some() {
         crumbs.push_str(" › thread");
     }
-    let mut left = vec![
+    let left = vec![
         Span::styled(mode, Style::new().fg(theme.on_accent).bg(mode_bg).bold()),
         Span::styled(crumbs, muted),
     ];
-    // The other workspaces, and whether anything waits there.
-    if app.workspaces.len() > 1 {
-        left.push(Span::styled("   ⇄", muted));
-        let others = app
-            .workspaces
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| *index != app.workspace);
-        for (_, tab) in others {
-            left.push(Span::styled(format!(" {}", tab.name), muted));
-            left.extend(super::overlays::workspace_badge(tab, theme));
-        }
-    }
     let left_width: usize = left.iter().map(|s| s.content.width()).sum();
 
     let connection = match &app.connection {
