@@ -10,8 +10,9 @@ homepage = "https://github.com/simoncdna/slackterm"
 readme = "README.md"
 keywords = ["slack", "tui", "terminal", "chat", "cli"]
 categories = ["command-line-utilities"]
-# The README videos would weigh more than the crate itself.
-exclude = ["docs/", ".github/", "dist-workspace.toml"]
+# The README videos would weigh more than the crate itself, and the
+# recipes for other package managers are of no use to Cargo.
+exclude = ["docs/", ".github/", "packaging/", "dist-workspace.toml"]
 
 [dependencies]
 anyhow = "1.0.104"
