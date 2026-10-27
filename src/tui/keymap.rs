@@ -40,6 +40,8 @@ pub enum Action {
     Play,
     Edit,
     Delete,
+    Copy,
+    CopyLink,
 }
 
 /// Where an action works, as the help screen groups them.
@@ -207,6 +209,14 @@ pub const ACTIONS: &[Definition] = &[
     ),
     define(Edit, "edit", Message, &["e"], "Edit your message"),
     define(Delete, "delete", Message, &["d"], "Delete your message"),
+    define(Copy, "copy", Message, &["y"], "Copy the message's text"),
+    define(
+        CopyLink,
+        "copy_link",
+        Message,
+        &["Y"],
+        "Copy the link to the message",
+    ),
 ];
 
 /// What works in each pane, before the actions that work anywhere: a key
@@ -216,9 +226,11 @@ fn pane_actions(focus: Focus) -> &'static [Action] {
         Focus::Sidebar => &[Down, Up, Top, Bottom, Left, Right, Open],
         Focus::Messages => &[
             Down, Up, PageDown, PageUp, Top, Bottom, Left, Thread, React, OpenFiles, Play, Edit,
-            Delete,
+            Delete, Copy, CopyLink,
         ],
-        Focus::Thread => &[Down, Up, Bottom, Left, React, OpenFiles, Play, Edit, Delete],
+        Focus::Thread => &[
+            Down, Up, Bottom, Left, React, OpenFiles, Play, Edit, Delete, Copy, CopyLink,
+        ],
     }
 }
 

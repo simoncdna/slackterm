@@ -1500,3 +1500,46 @@ fn n_moves_on_to_another_workspace_once_this_one_is_read() {
         [Command::NextUnreadWorkspace]
     );
 }
+
+#[test]
+fn y_copies_the_message_and_shift_y_its_link() {
+    let mut app = loaded_app();
+    app.team_url = "https://acme.slack.com/".into();
+    app.users.insert("U2".into(), user("U2", "hugo"));
+    update(
+        &mut app,
+        Event::Rtm(RtmEvent::Message {
+            channel: "C1".into(),
+            message: message("9.000100", "U2", "ask <@U2> &amp; co"),
+        }),
+    );
+    update(&mut app, key(KeyCode::Char('2')));
+
+    assert_eq!(
+        update(&mut app, key(KeyCode::Char('y'))),
+        [Command::Copy {
+            text: "ask @hugo & co".into(),
+            what: "message"
+        }]
+    );
+    assert_eq!(
+        update(&mut app, key(KeyCode::Char('Y'))),
+        [Command::Copy {
+            text: "https://acme.slack.com/archives/C1/p9000100".into(),
+            what: "link"
+        }]
+    );
+}
+
+#[test]
+fn a_reply_links_to_its_thread() {
+    assert_eq!(
+        permalink(
+            "https://acme.slack.com/",
+            "C1",
+            "2.000200",
+            Some("1.000100")
+        ),
+        "https://acme.slack.com/archives/C1/p2000200?thread_ts=1.000100&cid=C1"
+    );
+}

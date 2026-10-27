@@ -28,6 +28,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 
 use crate::config::{Config, Settings, SidebarFile};
+use crate::platform;
 use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
 
@@ -294,6 +295,12 @@ async fn event_loop(
                     if let Err(notice) = play(&target, screen, &terminal_events).await {
                         instances[index].app.notice = Some(notice);
                     }
+                }
+                Command::Copy { text, what } => {
+                    instances[index].app.notice = Some(match platform::copy_to_clipboard(&text) {
+                        Ok(()) => format!("{what} copied"),
+                        Err(e) => format!("could not copy the {what}: {e}"),
+                    });
                 }
                 Command::NextWorkspace => {
                     let next = (active + 1) % instances.len();

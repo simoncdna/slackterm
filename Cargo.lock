@@ -3846,6 +3846,7 @@ name = "slackterm"
 version = "0.2.0"
 dependencies = [
  "anyhow",
+ "base64 0.23.1",
  "chrono",
  "clap",
  "clap_complete",

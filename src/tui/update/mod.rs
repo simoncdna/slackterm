@@ -148,6 +148,12 @@ pub enum Command {
     /// Show the next workspace with unread messages, and open them. Run by
     /// the event loop.
     NextUnreadWorkspace,
+    /// Put text on the user's clipboard, saying what it was. Run by the
+    /// event loop, which owns the terminal.
+    Copy {
+        text: String,
+        what: &'static str,
+    },
     Search(String),
     LoadEmoji,
     /// Profile pictures to fetch: user id and picture URL.
@@ -824,6 +830,51 @@ fn play(app: &mut App) -> Vec<Command> {
             Vec::new()
         }
     }
+}
+
+/// `y`: the message's text, as shown.
+fn copy_message(app: &mut App) -> Vec<Command> {
+    let Some(message) = target_message(app) else {
+        return Vec::new();
+    };
+    let text = mrkdwn::parse(&message.text, &app.my_id, &*app)
+        .into_iter()
+        .map(|segment| segment.text)
+        .collect();
+    vec![Command::Copy {
+        text,
+        what: "message",
+    }]
+}
+
+/// `Y`: the message's link, which opens its thread for a reply.
+fn copy_link(app: &mut App) -> Vec<Command> {
+    let Some(target) = app.reaction_target() else {
+        return Vec::new();
+    };
+    let message = app.find_message(&target.channel, &target.ts);
+    let thread = message
+        .and_then(|m| m.thread_ts.clone())
+        .filter(|thread| *thread != target.ts);
+    vec![Command::Copy {
+        text: permalink(
+            &app.team_url,
+            &target.channel,
+            &target.ts,
+            thread.as_deref(),
+        ),
+        what: "link",
+    }]
+}
+
+/// Slack's link to a message: `…/archives/C123/p1700000000000100`.
+fn permalink(team_url: &str, channel: &str, ts: &str, thread_ts: Option<&str>) -> String {
+    let base = team_url.trim_end_matches('/');
+    let mut link = format!("{base}/archives/{channel}/p{}", ts.replace('.', ""));
+    if let Some(thread) = thread_ts {
+        link.push_str(&format!("?thread_ts={thread}&cid={channel}"));
+    }
+    link
 }
 
 /// The message `r`, `o` and `p` act on.

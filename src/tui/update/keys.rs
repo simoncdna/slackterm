@@ -147,6 +147,8 @@ fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
         Action::Play => return play(app),
         Action::Edit => edit_message(app),
         Action::Delete => confirm_delete(app),
+        Action::Copy => return copy_message(app),
+        Action::CopyLink => return copy_link(app),
         Action::Left => focus_sidebar(app),
         _ => {}
     }
@@ -172,6 +174,8 @@ fn on_thread_action(app: &mut App, action: Action) -> Vec<Command> {
         Action::Play => return play(app),
         Action::Edit => edit_message(app),
         Action::Delete => confirm_delete(app),
+        Action::Copy => return copy_message(app),
+        Action::CopyLink => return copy_link(app),
         _ => {}
     }
     Vec::new()

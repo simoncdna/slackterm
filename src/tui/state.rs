@@ -356,6 +356,8 @@ pub struct WorkspaceTab {
 pub struct App {
     pub team_id: String,
     pub team_name: String,
+    /// `https://acme.slack.com/`, for links to messages.
+    pub team_url: String,
     pub my_id: String,
     pub my_name: String,
     pub settings: Settings,
@@ -439,6 +441,7 @@ impl App {
         Self {
             team_id: workspace.team_id.clone(),
             team_name: workspace.team_name.clone(),
+            team_url: workspace.url.clone(),
             my_id: workspace.user_id.clone(),
             my_name: workspace.user_name.clone(),
             settings,
