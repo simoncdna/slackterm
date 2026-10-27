@@ -86,7 +86,16 @@ fn channel_messages(
         ));
     }
     let loading = history.is_none_or(|h| !h.loaded);
-    render_messages(frame, area, rendered, theme, loading, app, pictures);
+    render_messages(
+        frame,
+        area,
+        rendered,
+        theme,
+        loading,
+        app,
+        pictures,
+        Focus::Messages,
+    );
 }
 
 fn thread_messages(
@@ -112,7 +121,16 @@ fn thread_messages(
         style,
         true,
     );
-    render_messages(frame, area, rendered, theme, !thread.loaded, app, pictures);
+    render_messages(
+        frame,
+        area,
+        rendered,
+        theme,
+        !thread.loaded,
+        app,
+        pictures,
+        Focus::Thread,
+    );
 }
 
 fn thread_title(app: &App) -> String {
@@ -227,6 +245,10 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
         !thread_target(app),
         &channel_placeholder,
     );
+    app.screen
+        .borrow_mut()
+        .composers
+        .push((input_area, Some(Focus::Messages)));
 
     if app.thread.is_some() {
         let block = panel(
@@ -280,6 +302,10 @@ pub fn panels(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
             thread_target(app),
             &reply_placeholder,
         );
+        app.screen
+            .borrow_mut()
+            .composers
+            .push((input_area, Some(Focus::Thread)));
     }
 
     status_bar(frame, status, app, theme, None);
@@ -377,6 +403,7 @@ pub fn stream(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Pictur
     status_bar(frame, status, app, theme, Some(theme.panel));
     let input = input.inner(ratatui::layout::Margin::new(1, 0));
     input_box(frame, input, app, theme, &composer, true, &placeholder(app));
+    app.screen.borrow_mut().composers.push((input, None));
 }
 
 // ----------------------------------------------- C · focus + switcher
@@ -470,6 +497,7 @@ pub fn focus(frame: &mut Frame, app: &App, theme: &Theme, pictures: &mut Picture
         true,
         &placeholder(app),
     );
+    app.screen.borrow_mut().composers.push((input, None));
 
     status_bar(frame, status, app, theme, Some(theme.panel));
 }

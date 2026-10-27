@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyEvent, MouseEvent};
 
 use crate::config::{AvatarStyle, Choice, Layout, Settings, SidebarState, SidebarTab};
 use crate::slack::media::{self, Playable};
@@ -24,6 +24,7 @@ use super::state::{
 #[allow(clippy::large_enum_variant)]
 pub enum Event {
     Key(KeyEvent),
+    Mouse(MouseEvent),
     Paste(String),
     Api(ApiEvent),
     Rtm(RtmEvent),
@@ -210,6 +211,7 @@ pub fn initial_commands() -> Vec<Command> {
 pub fn update(app: &mut App, event: Event) -> Vec<Command> {
     let mut commands = match event {
         Event::Key(key) => keys::on_key(app, key),
+        Event::Mouse(mouse) => mouse::on_mouse(app, mouse),
         Event::Paste(text) => {
             on_paste(app, &text);
             Vec::new()
@@ -893,6 +895,7 @@ fn file_to_open(file: &crate::slack::File) -> Option<FileToOpen> {
 }
 
 mod keys;
+mod mouse;
 mod overlays;
 #[cfg(test)]
 mod tests;

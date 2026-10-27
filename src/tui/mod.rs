@@ -18,8 +18,9 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
-    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event as TermEvent, KeyEventKind, KeyboardEnhancementFlags, MouseButton, MouseEventKind,
+    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::supports_keyboard_enhancement;
@@ -27,7 +28,7 @@ use ratatui::DefaultTerminal;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 
-use crate::config::{Config, Settings, SidebarFile};
+use crate::config::{Config, Mouse, Settings, SidebarFile};
 use crate::platform;
 use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
@@ -207,6 +208,8 @@ async fn run_app(
 
     let mut terminal = ratatui::try_init()?;
     let mut enhanced = enter_interface_mode();
+    let mut mouse = instances[active].app.settings.mouse == Mouse::On;
+    set_mouse_capture(mouse);
     let mut pictures = pictures::Pictures::detect();
     for instance in &mut instances {
         instance.app.graphics = pictures.available();
@@ -221,10 +224,12 @@ async fn run_app(
     let mut screen = Screen {
         terminal: &mut terminal,
         enhanced: &mut enhanced,
+        mouse: &mut mouse,
         pictures: &mut pictures,
     };
     let result = event_loop(&mut screen, &mut instances, active, &mut events).await;
 
+    set_mouse_capture(false);
     leave_interface_mode(enhanced);
     ratatui::restore();
     result
@@ -235,7 +240,17 @@ struct Screen<'a> {
     terminal: &'a mut DefaultTerminal,
     /// Keys are reported with their modifiers (Shift+Enter).
     enhanced: &'a mut bool,
+    /// The mouse is reported, rather than selecting text.
+    mouse: &'a mut bool,
     pictures: &'a mut pictures::Pictures,
+}
+
+fn set_mouse_capture(on: bool) {
+    let _ = if on {
+        execute!(stdout(), EnableMouseCapture)
+    } else {
+        execute!(stdout(), DisableMouseCapture)
+    };
 }
 
 /// Bracketed paste, and distinct Shift+Enter where the terminal supports
@@ -277,6 +292,13 @@ async fn event_loop(
             Some(event) = terminal_events.next() => match event? {
                 TermEvent::Key(key) if key.kind != KeyEventKind::Release => (active, Event::Key(key)),
                 TermEvent::Paste(text) => (active, Event::Paste(text)),
+                // Moves are many and mean nothing here.
+                TermEvent::Mouse(mouse) if matches!(
+                    mouse.kind,
+                    MouseEventKind::Down(MouseButton::Left)
+                        | MouseEventKind::ScrollUp
+                        | MouseEventKind::ScrollDown
+                ) => (active, Event::Mouse(mouse)),
                 _ => continue,
             },
             Some(tagged) = events.recv() => tagged,
@@ -329,6 +351,11 @@ async fn event_loop(
         if instances[index].app.should_quit {
             return Ok(());
         }
+        let mouse = settings.mouse == Mouse::On;
+        if mouse != *screen.mouse {
+            *screen.mouse = mouse;
+            set_mouse_capture(mouse);
+        }
     }
 }
 
@@ -374,6 +401,7 @@ async fn play(
 
     // Stop reading the keyboard: the keys are mpv's until it quits.
     terminal_events.pause();
+    set_mouse_capture(false);
     leave_interface_mode(*screen.enhanced);
     ratatui::restore();
 
@@ -386,6 +414,7 @@ async fn play(
         .and_then(|()| execute!(stdout(), crossterm::terminal::EnterAlternateScreen))
         .and_then(|()| {
             *screen.enhanced = enter_interface_mode();
+            set_mouse_capture(*screen.mouse);
             screen.terminal.clear()
         });
     terminal_events.resume();

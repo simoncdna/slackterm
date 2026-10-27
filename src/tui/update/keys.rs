@@ -74,7 +74,7 @@ fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
     Vec::new()
 }
 
-fn on_sidebar_action(app: &mut App, action: Action) -> Vec<Command> {
+pub(super) fn on_sidebar_action(app: &mut App, action: Action) -> Vec<Command> {
     let items = app.sidebar_items();
     let Some(last) = items.len().checked_sub(1) else {
         return Vec::new();
@@ -103,7 +103,7 @@ fn on_sidebar_action(app: &mut App, action: Action) -> Vec<Command> {
     Vec::new()
 }
 
-fn toggle_section(app: &mut App, id: &str) -> Vec<Command> {
+pub(super) fn toggle_section(app: &mut App, id: &str) -> Vec<Command> {
     if !app.collapsed.remove(id) {
         app.collapsed.insert(id.to_string());
     }
@@ -118,7 +118,7 @@ fn save_sidebar(app: &App) -> Command {
     }
 }
 
-fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
+pub(super) fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
     if app.sidebar_tab == tab {
         return Vec::new();
     }
@@ -128,7 +128,7 @@ fn switch_tab(app: &mut App, tab: SidebarTab) -> Vec<Command> {
     vec![save_sidebar(app)]
 }
 
-fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
+pub(super) fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
     let len = app.current_messages().len();
     match action {
         // Going up from the oldest loaded message fetches older ones.
@@ -155,7 +155,7 @@ fn on_messages_action(app: &mut App, action: Action) -> Vec<Command> {
     Vec::new()
 }
 
-fn on_thread_action(app: &mut App, action: Action) -> Vec<Command> {
+pub(super) fn on_thread_action(app: &mut App, action: Action) -> Vec<Command> {
     let Some(thread) = &mut app.thread else {
         return Vec::new();
     };

@@ -172,7 +172,7 @@ pub fn settings(
 ) -> Rect {
     let screen = frame.area();
     let width = screen.width.saturating_sub(4).min(64);
-    let height = 12.min(screen.height);
+    let height = 13.min(screen.height);
     let area = Rect {
         x: screen.x + (screen.width - width) / 2,
         y: screen.y + (screen.height - height) / 3,
@@ -193,6 +193,7 @@ pub fn settings(
         ("Accent", settings.accent.label()),
         ("Avatars", settings.avatars.label()),
         ("Clock", settings.clock.label()),
+        ("Mouse", settings.mouse.label()),
     ];
     // The picture protocol in use, to tell why only initials show.
     let notes = [
@@ -200,6 +201,7 @@ pub fn settings(
         None,
         None,
         (settings.avatars == AvatarStyle::Images).then_some(images),
+        None,
         None,
     ];
     let mut lines = vec![Line::default()];
@@ -661,6 +663,8 @@ fn help_lines(app: &App, theme: &Theme) -> Vec<Line<'static>> {
     lines.push(heading("Always"));
     lines.push(row("^c", "Quit"));
     lines.push(row("esc", "Close the thread or the popup, deselect"));
+    lines.push(row("wheel", "Scroll the list under the pointer"));
+    lines.push(row("click", "Open, fold, select, or start writing"));
     lines
 }
 

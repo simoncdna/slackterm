@@ -144,6 +144,26 @@ impl Choice for Clock {
     }
 }
 
+/// Whether slackterm takes the mouse: the wheel scrolls and clicks open.
+/// Off, the terminal selects text as usual.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mouse {
+    #[default]
+    On,
+    Off,
+}
+
+impl Choice for Mouse {
+    const ALL: &'static [Self] = &[Self::On, Self::Off];
+    fn label(self) -> &'static str {
+        match self {
+            Self::On => "on",
+            Self::Off => "off: the terminal selects text",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -156,6 +176,8 @@ pub struct Settings {
     pub avatars: AvatarStyle,
     #[serde(default)]
     pub clock: Clock,
+    #[serde(default)]
+    pub mouse: Mouse,
 }
 
 impl Settings {
@@ -225,6 +247,8 @@ struct File {
     #[serde(default)]
     clock: Clock,
     #[serde(default)]
+    mouse: Mouse,
+    #[serde(default)]
     keys: BTreeMap<String, KeyList>,
     #[serde(default)]
     colors: Colors,
@@ -251,6 +275,7 @@ impl Config {
                 accent: file.accent,
                 avatars: file.avatars,
                 clock: file.clock,
+                mouse: file.mouse,
             },
             keys: file.keys,
             colors: file.colors,
@@ -442,6 +467,7 @@ mod tests {
             accent: Accent::Lilac,
             avatars: AvatarStyle::Initials,
             clock: Clock::TwelveHour,
+            mouse: Mouse::Off,
         };
         let toml = settings.write_into("").unwrap();
         assert!(toml.contains("layout = \"stream\""));

@@ -4,7 +4,7 @@
 use ratatui::style::Color;
 use serde::Serialize;
 
-use crate::config::{Accent, AvatarStyle, Choice, Clock, Layout, Settings, ThemeName};
+use crate::config::{Accent, AvatarStyle, Choice, Clock, Layout, Mouse, Settings, ThemeName};
 
 use super::keymap::ACTIONS;
 use super::theme::Theme;
@@ -41,6 +41,7 @@ pub fn default_config() -> String {
     option::<Accent>(&mut out, "accent");
     option::<AvatarStyle>(&mut out, "avatars");
     option::<Clock>(&mut out, "clock");
+    option::<Mouse>(&mut out, "mouse");
 
     out.push_str(KEYS);
     for definition in ACTIONS {

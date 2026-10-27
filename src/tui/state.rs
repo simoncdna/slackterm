@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
 
@@ -325,7 +325,7 @@ pub struct Editing {
     pub draft: Input,
 }
 
-pub const SETTINGS_ROWS: usize = 5;
+pub const SETTINGS_ROWS: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SwitcherTarget {
@@ -343,6 +343,25 @@ pub struct SwitcherResult {
     pub target: SwitcherTarget,
     pub label: String,
     pub matched: Vec<usize>,
+}
+
+/// Where things were drawn last, to tell what the mouse points at.
+#[derive(Debug, Clone, Default)]
+pub struct ScreenMap {
+    /// The sidebar's list, and the entry on each of its rows.
+    pub sidebar: Option<Rect>,
+    pub sidebar_rows: Vec<(u16, SidebarItem)>,
+    /// The tabs' row, and the column where the DMs tab starts.
+    pub tabs: Option<(Rect, u16)>,
+    /// Each workspace's name in the workspace bar.
+    pub workspaces: Vec<(Rect, usize)>,
+    pub messages: Option<Rect>,
+    /// Rows of the messages, with the message each row belongs to.
+    pub message_rows: Vec<(u16, usize)>,
+    pub thread: Option<Rect>,
+    pub thread_rows: Vec<(u16, usize)>,
+    /// The message boxes, and the pane each writes to, when it decides.
+    pub composers: Vec<(Rect, Option<Focus>)>,
 }
 
 /// One of the workspaces the user is signed in to, as the others see it.
@@ -423,6 +442,8 @@ pub struct App {
     pub workspace: usize,
     /// On screen. One in the background does not mark what arrives as read.
     pub visible: bool,
+    /// Where the last frame drew things, for the mouse.
+    pub screen: RefCell<ScreenMap>,
     /// Where the message being written is drawn, to show suggestions above.
     pub composer_area: Cell<Option<Rect>>,
     pub overlay: Option<Overlay>,
@@ -482,6 +503,7 @@ impl App {
             workspaces: Vec::new(),
             workspace: 0,
             visible: true,
+            screen: RefCell::new(ScreenMap::default()),
             composer_area: Cell::new(None),
             overlay: None,
             connection: Connection::Connecting,

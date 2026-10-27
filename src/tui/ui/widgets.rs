@@ -16,7 +16,10 @@ use crate::slack::{File, FileKind, Message};
 use crate::slack::{emoji, media};
 use crate::tui::keymap::Action;
 use crate::tui::pictures::{AVATAR_SIZE, Pictures};
-use crate::tui::state::{App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow};
+use crate::tui::state::{
+    App, Channel, ChannelKind, Connection, Focus, Mode, Section, SidebarRow, WorkspaceTab,
+};
+
 use crate::tui::theme::Theme;
 
 use super::text::{
@@ -53,6 +56,8 @@ pub struct Rendered {
     pub previews: Vec<PreviewAnchor>,
     /// Rows of the selected message, to keep it in view.
     pub selected: Option<(usize, usize)>,
+    /// The message each row belongs to; `None` for separators.
+    pub owners: Vec<Option<usize>>,
 }
 
 impl Rendered {
@@ -67,6 +72,7 @@ impl Rendered {
             preview.line += 1;
         }
         self.selected = self.selected.map(|(start, end)| (start + 1, end + 1));
+        self.owners.insert(0, None);
     }
 }
 
@@ -86,6 +92,7 @@ pub fn message_lines(
     let mut anchors = Vec::new();
     let mut previews = Vec::new();
     let mut previous: Option<&Message> = None;
+    let mut ranges = Vec::new();
     let avatars = app.settings.avatars != AvatarStyle::Off && style != MessageStyle::Stream;
 
     for (index, message) in messages.iter().enumerate() {
@@ -134,6 +141,7 @@ pub fn message_lines(
             }
             selected_rows = Some((start, lines.len()));
         }
+        ranges.push((start..lines.len(), index));
         previous = Some(message);
         if in_thread && index == 0 {
             let count = message.reply_count.max(messages.len() as u32 - 1);
@@ -142,11 +150,18 @@ pub fn message_lines(
             previous = None;
         }
     }
+    let mut owners = vec![None; lines.len()];
+    for (rows, index) in ranges {
+        for row in rows {
+            owners[row] = Some(index);
+        }
+    }
     Rendered {
         lines,
         avatars: anchors,
         previews,
         selected: selected_rows,
+        owners,
     }
 }
 
@@ -553,6 +568,7 @@ pub struct Viewport {
 
 /// Draws the message list anchored to the bottom, scrolled so the selected
 /// message stays visible, then the authors' pictures over their initials.
+#[allow(clippy::too_many_arguments)]
 pub fn render_messages(
     frame: &mut Frame,
     area: Rect,
@@ -561,10 +577,29 @@ pub fn render_messages(
     loading: bool,
     app: &App,
     pictures: &mut Pictures,
+    pane: Focus,
 ) {
     let avatars = std::mem::take(&mut rendered.avatars);
     let previews = std::mem::take(&mut rendered.previews);
-    let Some(viewport) = render_lines(frame, area, rendered, theme, loading) else {
+    let owners = std::mem::take(&mut rendered.owners);
+    let viewport = render_lines(frame, area, rendered, theme, loading);
+    // The mouse finds messages by the rows they were drawn on.
+    let rows = viewport.as_ref().map_or_else(Vec::new, |viewport| {
+        (0..viewport.shown)
+            .filter_map(|k| Some((viewport.top + k as u16, (*owners.get(viewport.first + k)?)?)))
+            .collect()
+    });
+    {
+        let mut screen = app.screen.borrow_mut();
+        if pane == Focus::Thread {
+            screen.thread = Some(area);
+            screen.thread_rows = rows;
+        } else {
+            screen.messages = Some(area);
+            screen.message_rows = rows;
+        }
+    }
+    let Some(viewport) = viewport else {
         return;
     };
     // Only pictures entirely on screen are drawn.
@@ -663,14 +698,25 @@ pub fn sidebar(
     focused: bool,
     style: SidebarStyle,
 ) {
-    let workspaces = workspace_bar(app, theme);
+    let workspaces = workspace_bar(app, theme, area.width as usize);
     let [workspaces_area, area] = Layout::vertical([
         Constraint::Length(u16::from(workspaces.is_some())),
         Constraint::Fill(1),
     ])
     .areas(area);
-    if let Some(line) = workspaces {
+    if let Some((line, names)) = workspaces {
         frame.render_widget(Paragraph::new(line), workspaces_area);
+        app.screen.borrow_mut().workspaces = names
+            .into_iter()
+            .map(|(column, width, index)| {
+                let name = Rect {
+                    x: workspaces_area.x + column,
+                    width,
+                    ..workspaces_area
+                };
+                (name.intersection(workspaces_area), index)
+            })
+            .collect();
     }
     if !app.channels_loaded {
         let text = Line::styled("loading…", Style::new().fg(theme.muted));
@@ -683,6 +729,8 @@ pub fn sidebar(
         Paragraph::new(tab_bar(app, theme, tabs_area.width as usize)),
         tabs_area,
     );
+    // ` Channels │ DMs`: the DMs tab starts after the bar.
+    app.screen.borrow_mut().tabs = Some((tabs_area, tabs_area.x + 11));
 
     let width = area.width as usize;
     let today = Local::now().date_naive();
@@ -726,32 +774,56 @@ pub fn sidebar(
         .saturating_sub(height.saturating_sub(2))
         .min(rows.len().saturating_sub(height));
     let visible: Vec<Line> = rows.into_iter().skip(start).take(height).collect();
+    let items = app.sidebar_items();
+    {
+        let mut screen = app.screen.borrow_mut();
+        screen.sidebar = Some(area);
+        screen.sidebar_rows = (0..visible.len())
+            .filter_map(|k| Some((area.y + k as u16, items.get(start + k)?.clone())))
+            .collect();
+    }
     frame.render_widget(Paragraph::new(visible), area);
 }
 
 /// The workspaces, when the user is signed in to several: this one in the
 /// accent, the others with a badge when something waits there.
-fn workspace_bar(app: &App, theme: &Theme) -> Option<Line<'static>> {
-    if app.workspaces.len() < 2 {
+/// Where a workspace's name is in the bar: column, width, workspace.
+type NamePlace = (u16, u16, usize);
+
+/// `⇄ Weekend Builders @1`: the other workspaces, the panel's title naming
+/// this one. Names are shortened to fit `width`, never their badge.
+/// Returns where each name is, for the mouse.
+fn workspace_bar(
+    app: &App,
+    theme: &Theme,
+    width: usize,
+) -> Option<(Line<'static>, Vec<NamePlace>)> {
+    let others: Vec<(usize, &WorkspaceTab)> = app
+        .workspaces
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != app.workspace)
+        .collect();
+    if others.is_empty() {
         return None;
     }
-    let mut spans = Vec::new();
-    for (index, tab) in app.workspaces.iter().enumerate() {
-        if index == app.workspace {
-            spans.push(Span::styled(
-                format!(" {}", tab.name),
-                Style::new().fg(theme.accent).bold(),
-            ));
-        } else {
-            spans.push(Span::styled(
-                format!(" {}", tab.name),
-                Style::new().fg(theme.muted),
-            ));
-            spans.extend(super::overlays::workspace_badge(tab, theme));
-        }
-        spans.push(Span::raw(" "));
+    let mut spans = vec![Span::styled(" ⇄", Style::new().fg(theme.muted))];
+    let mut names = Vec::new();
+    let share = width.saturating_sub(2) / others.len();
+    for (index, tab) in others {
+        let badge = super::overlays::workspace_badge(tab, theme);
+        let badge_width = badge.as_ref().map_or(0, |b| b.content.width());
+        let column: usize = spans.iter().map(|s| s.content.width()).sum();
+        let room = share.saturating_sub(badge_width + 1).max(1);
+        spans.push(Span::styled(
+            format!(" {}", truncate(&tab.name, room)),
+            Style::new().fg(theme.muted),
+        ));
+        spans.extend(badge);
+        let end: usize = spans.iter().map(|s| s.content.width()).sum();
+        names.push((column as u16, (end - column) as u16, index));
     }
-    Some(Line::from(spans))
+    Some((Line::from(spans), names))
 }
 
 /// `⇄ Weekend Builders @1`: the other workspaces, for a layout without a

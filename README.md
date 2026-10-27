@@ -171,6 +171,7 @@ slackterm doctor       # check your setup when something is off
 | `?` | All the keys |
 | `Ctrl+K` | Go to a channel, a person or another workspace |
 | `w` | Next workspace, when signed in to several |
+| `n` | Next conversation with unread messages, in any workspace |
 | `/` or `Ctrl+F` | Search messages |
 | `,` | Settings (layout, theme, accent, avatars, clock) |
 | `Tab` / `Shift+Tab` | Next / previous pane |
@@ -197,6 +198,7 @@ slackterm doctor       # check your setup when something is off
 | `r` | React to the message (in threads too) |
 | `e` | Edit your message: the selected one, else your latest |
 | `d` | Delete your message, after confirming |
+| `y` / `Y` | Copy the message's text / its link (over SSH too) |
 | `o` | Open the message's files |
 | `p` | Play the message's video in the terminal (needs [mpv](https://mpv.io), and [yt-dlp](https://github.com/yt-dlp/yt-dlp) for links) |
 | `i`, `a` or `Enter` | Write |
@@ -241,7 +243,10 @@ theme = "night"     # night | light | gruvbox | nord
 accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
 clock = "24h"       # 24h | 12h
+mouse = "on"        # on | off
 ```
+
+With the mouse on, the wheel scrolls the list under the pointer, and a click opens a conversation, folds a section, switches tab or workspace, selects a message, or starts writing in the message box. To select text with the mouse anyway, hold Shift (Option in iTerm2), or set `mouse = "off"`.
 
 ### Keys
 

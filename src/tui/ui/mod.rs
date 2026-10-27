@@ -16,6 +16,7 @@ use super::theme::Theme;
 pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
     let theme = Theme::new(&app.settings, &app.colors);
     pictures.begin_frame();
+    app.screen.replace(Default::default());
     frame.render_widget(
         Block::new().style(Style::new().bg(theme.bg).fg(theme.fg)),
         frame.area(),
@@ -328,10 +329,78 @@ mod tests {
         };
         app.workspaces = vec![tab("acme", 0), tab("side", 2), tab("perso", 0)];
         let text = screen(&app, 160, 30);
-        assert!(text.contains(" acme  side @2  perso"), "{text}");
+        assert!(text.contains(" ⇄ side @2 perso"), "{text}");
         app.settings.layout = Layout::Focus;
         let text = screen(&app, 160, 30);
         assert!(text.contains("⇄ side @2   ⇄ perso"), "{text}");
+    }
+
+    fn mouse(kind: crossterm::event::MouseEventKind, column: u16, row: u16) -> Event {
+        Event::Mouse(crossterm::event::MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: crossterm::event::KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn the_mouse_selects_scrolls_writes_and_opens() {
+        use crate::tui::state::SidebarItem;
+        use crossterm::event::{MouseButton, MouseEventKind};
+        let click = MouseEventKind::Down(MouseButton::Left);
+        let mut app = sample_app();
+        screen(&app, 120, 30);
+        let map = app.screen.borrow().clone();
+
+        let messages = map.messages.unwrap();
+        let (row, index) = map.message_rows[0];
+        update(&mut app, mouse(click, messages.x + 4, row));
+        assert_eq!((app.focus, app.selected), (Focus::Messages, Some(index)));
+
+        app.selected = None;
+        update(
+            &mut app,
+            mouse(MouseEventKind::ScrollUp, messages.x + 4, row),
+        );
+        assert!(app.selected.is_some());
+
+        let (composer, _) = map.composers[0];
+        update(&mut app, mouse(click, composer.x + 2, composer.y + 1));
+        assert_eq!(app.mode, Mode::Insert);
+
+        let sidebar = map.sidebar.unwrap();
+        let (row, _) = map
+            .sidebar_rows
+            .iter()
+            .find(|(_, item)| *item == SidebarItem::Channel("C2".into()))
+            .cloned()
+            .unwrap();
+        update(&mut app, mouse(click, sidebar.x + 3, row));
+        assert_eq!(app.mode, Mode::Normal);
+        assert_eq!(app.current.as_deref(), Some("C2"));
+    }
+
+    #[test]
+    fn a_click_on_a_workspace_shows_it() {
+        use crossterm::event::{MouseButton, MouseEventKind};
+        let mut app = sample_app();
+        let tab = |name: &str| crate::tui::state::WorkspaceTab {
+            name: name.into(),
+            unread: false,
+            mentions: 0,
+        };
+        app.workspaces = vec![tab("acme"), tab("side")];
+        screen(&app, 120, 30);
+        let (name, index) = app.screen.borrow().workspaces[0];
+
+        let commands = update(
+            &mut app,
+            mouse(MouseEventKind::Down(MouseButton::Left), name.x + 1, name.y),
+        );
+
+        assert_eq!(index, 1);
+        assert_eq!(commands, [crate::tui::update::Command::SwitchWorkspace(1)]);
     }
 
     #[test]
