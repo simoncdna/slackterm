@@ -19,3 +19,5 @@ install-updater = false
 tap = "simoncdna/homebrew-tap"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
+# Build every target on pull requests, without publishing: a check before a tag.
+pr-run-mode = "upload"
