@@ -3,6 +3,7 @@
 //! or `:`.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use super::fuzzy::fuzzy_match;
 use super::input::Input;
@@ -234,6 +235,72 @@ pub fn name_before_cursor(input: &Input) -> Option<usize> {
     (fits && starts_word).then_some(sigil_at)
 }
 
+/// The files a drop on the terminal pasted: absolute paths, quoted or with
+/// their spaces escaped, or `file://` addresses, as terminals write them.
+/// `None` unless every one is a file, so that pasted text stays text.
+pub fn dropped_files(text: &str) -> Option<Vec<PathBuf>> {
+    let paths: Vec<PathBuf> = shell_words(text.trim())?
+        .iter()
+        .map(|word| file_path(word))
+        .collect::<Option<_>>()?;
+    (!paths.is_empty() && paths.iter().all(|path| path.is_file())).then_some(paths)
+}
+
+/// Splits like a shell: quotes keep spaces, and so does a backslash, except
+/// on Windows where it separates folders.
+fn shell_words(text: &str) -> Option<Vec<String>> {
+    let mut words = Vec::new();
+    let mut word: Option<String> = None;
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' | '"' => {
+                let word = word.get_or_insert_default();
+                loop {
+                    match chars.next()? {
+                        end if end == c => break,
+                        '\\' if c == '"' && !cfg!(windows) => word.push(chars.next()?),
+                        other => word.push(other),
+                    }
+                }
+            }
+            '\\' if !cfg!(windows) => word.get_or_insert_default().push(chars.next()?),
+            c if c.is_whitespace() => words.extend(word.take()),
+            c => word.get_or_insert_default().push(c),
+        }
+    }
+    words.extend(word);
+    Some(words)
+}
+
+fn file_path(word: &str) -> Option<PathBuf> {
+    if let Some(address) = word.strip_prefix("file://") {
+        let path = address.strip_prefix("localhost").unwrap_or(address);
+        return Some(PathBuf::from(percent_decode(path)?));
+    }
+    let path = match word.strip_prefix("~/") {
+        Some(rest) => std::env::home_dir()?.join(rest),
+        None => PathBuf::from(word),
+    };
+    path.is_absolute().then_some(path)
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut rest = text.as_bytes();
+    while let Some((&byte, after)) = rest.split_first() {
+        if byte == b'%' {
+            let hex = std::str::from_utf8(after.get(..2)?).ok()?;
+            bytes.push(u8::from_str_radix(hex, 16).ok()?);
+            rest = &after[2..];
+        } else {
+            bytes.push(byte);
+            rest = after;
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
 /// Keeps a draft per conversation and per thread: when the user starts
 /// writing somewhere else, the message box puts away what it held and
 /// brings back what was left there. An edit in progress stays put.
@@ -459,6 +526,39 @@ mod tests {
         assert_eq!(typed("Note:"), None);
         assert_eq!(typed("done :tada:"), None);
         assert_eq!(typed("@hugo+1"), None);
+    }
+
+    #[test]
+    fn recognises_files_dropped_on_the_terminal() {
+        let dir = tempfile::tempdir().unwrap();
+        let spaced = dir.path().join("Q3 report.pdf");
+        let plain = dir.path().join("shot.png");
+        std::fs::write(&spaced, "pdf").unwrap();
+        std::fs::write(&plain, "png").unwrap();
+        let (spaced_text, plain_text) = (spaced.display(), plain.display());
+
+        assert_eq!(
+            dropped_files(&format!("'{spaced_text}' {plain_text} ")),
+            Some(vec![spaced.clone(), plain.clone()])
+        );
+        assert_eq!(
+            dropped_files(&format!("\"{spaced_text}\"")),
+            Some(vec![spaced.clone()])
+        );
+        let address = format!("file://{}", spaced_text.to_string().replace(' ', "%20"));
+        assert_eq!(dropped_files(&address), Some(vec![spaced.clone()]));
+        if !cfg!(windows) {
+            let escaped = spaced_text.to_string().replace(' ', "\\ ");
+            assert_eq!(dropped_files(&escaped), Some(vec![spaced.clone()]));
+        }
+
+        // Anything else is text to write.
+        assert_eq!(dropped_files("see the report"), None);
+        assert_eq!(dropped_files("shot.png"), None);
+        assert_eq!(dropped_files(&format!("{plain_text} and more")), None);
+        assert_eq!(dropped_files(&dir.path().display().to_string()), None);
+        assert_eq!(dropped_files(&format!("'{plain_text}")), None);
+        assert_eq!(dropped_files(""), None);
     }
 
     #[test]

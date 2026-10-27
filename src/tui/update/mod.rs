@@ -18,9 +18,9 @@ use crate::slack::{
 use super::compose;
 use super::input::Input;
 use super::state::{
-    App, Channel, ChannelKind, Connection, Editing, EmojiPicker, Focus, History, Jump, Mode,
-    Overlay, ReactionTarget, SETTINGS_ROWS, Search, SearchStatus, SidebarItem, SwitcherTarget,
-    Thread,
+    App, Attachment, Channel, ChannelKind, Connection, Editing, EmojiPicker, Focus, History, Jump,
+    Mode, Overlay, ReactionTarget, SETTINGS_ROWS, Search, SearchStatus, SidebarItem,
+    SwitcherTarget, Thread, draft_key,
 };
 
 // Events are few and short-lived; boxing the large variants would only add noise.
@@ -130,6 +130,13 @@ pub enum Command {
         channel: String,
         text: String,
         thread_ts: Option<String>,
+    },
+    /// Share files, with `text` as their message.
+    Upload {
+        channel: String,
+        text: String,
+        thread_ts: Option<String>,
+        files: Vec<PathBuf>,
     },
     MarkRead {
         channel: String,
@@ -292,6 +299,12 @@ fn request_pictures(app: &mut App) -> Vec<Command> {
 
 fn on_paste(app: &mut App, text: &str) {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    if app.overlay.is_none() {
+        if !attach(app, &text) && app.mode == Mode::Insert {
+            app.input.insert_str(&text);
+        }
+        return;
+    }
     match &mut app.overlay {
         Some(Overlay::Switcher { query, cursor }) => {
             query.insert_str(&text.replace('\n', " "));
@@ -300,9 +313,42 @@ fn on_paste(app: &mut App, text: &str) {
         Some(Overlay::Search(search)) => search.query.insert_str(&text.replace('\n', " ")),
         Some(Overlay::Emoji(picker)) => picker.query.insert_str(text.trim()),
         Some(Overlay::Settings { .. } | Overlay::Help { .. } | Overlay::DeleteMessage(_)) => {}
-        None if app.mode == Mode::Insert => app.input.insert_str(&text),
         None => {}
     }
+}
+
+/// A file dropped on the terminal, which pastes its path, goes with the
+/// message being written. Returns whether `text` was such files.
+fn attach(app: &mut App, text: &str) -> bool {
+    if app.editing.is_some() {
+        return false;
+    }
+    let Some(key) = app
+        .compose_target()
+        .map(|(channel, thread_ts)| draft_key(&channel, thread_ts.as_deref()))
+    else {
+        return false;
+    };
+    let Some(paths) = compose::dropped_files(text) else {
+        return false;
+    };
+    let attached = app.attachments.entry(key).or_default();
+    for path in paths {
+        if attached.iter().any(|a| a.path == path) {
+            continue;
+        }
+        let name = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |n| n.to_string_lossy().into(),
+        );
+        let size = std::fs::metadata(&path).map_or(0, |m| m.len());
+        attached.push(Attachment { path, name, size });
+    }
+    if app.focus == Focus::Sidebar {
+        app.focus = Focus::Messages;
+    }
+    app.mode = Mode::Insert;
+    true
 }
 
 // ---------------------------------------------------------------- API results

@@ -1691,3 +1691,92 @@ fn notifications_name_the_workspace_when_there_are_several() {
     assert_eq!(body.chars().count(), 201);
     assert!(body.ends_with('…'));
 }
+
+fn dropped(dir: &tempfile::TempDir, name: &str) -> std::path::PathBuf {
+    let path = dir.path().join(name);
+    std::fs::write(&path, "content").unwrap();
+    path
+}
+
+#[test]
+fn a_dropped_file_goes_with_the_next_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let report = dropped(&dir, "Q3 report.pdf");
+    let mut app = loaded_app();
+
+    // Dropped from the sidebar, in normal mode: it opens the message box.
+    update(&mut app, Event::Paste(format!("'{}'", report.display())));
+    assert_eq!(app.mode, Mode::Insert);
+    assert_eq!(app.focus, Focus::Messages);
+    assert_eq!(app.input.text(), "");
+    assert_eq!(app.attached()[0].name, "Q3 report.pdf");
+    assert_eq!(app.attached()[0].size, 7);
+
+    typed(&mut app, "numbers");
+    let commands = update(&mut app, key(KeyCode::Enter));
+    assert_eq!(
+        commands,
+        [Command::Upload {
+            channel: "C1".into(),
+            text: "numbers".into(),
+            thread_ts: None,
+            files: vec![report],
+        }]
+    );
+    assert!(app.attached().is_empty());
+}
+
+#[test]
+fn backspace_takes_back_a_file_and_text_stays_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let shot = dropped(&dir, "shot.png");
+    let mut app = writing_app();
+    update(&mut app, Event::Paste(shot.display().to_string()));
+    update(&mut app, Event::Paste("shot.png is attached".into()));
+    assert_eq!(app.input.text(), "shot.png is attached");
+    assert_eq!(app.attached().len(), 1);
+
+    update(&mut app, ctrl('u'));
+    update(&mut app, key(KeyCode::Backspace));
+    assert!(app.attached().is_empty());
+    assert_eq!(update(&mut app, key(KeyCode::Enter)), []);
+}
+
+#[test]
+fn each_conversation_keeps_its_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let shot = dropped(&dir, "shot.png");
+    let mut app = writing_app();
+    update(&mut app, Event::Paste(shot.display().to_string()));
+    update(&mut app, key(KeyCode::Esc));
+
+    go_to(&mut app, "random");
+    update(&mut app, key(KeyCode::Char('i')));
+    assert!(app.attached().is_empty());
+    update(&mut app, key(KeyCode::Esc));
+
+    go_to(&mut app, "general");
+    assert_eq!(app.attached().len(), 1);
+}
+
+#[test]
+fn a_path_pasted_while_editing_is_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let shot = dropped(&dir, "shot.png");
+    let mut app = writing_app();
+    typed(&mut app, "mine");
+    update(&mut app, key(KeyCode::Enter));
+    update(
+        &mut app,
+        Event::Api(ApiEvent::Sent {
+            channel: "C1".into(),
+            message: message("5.0", "UME", "mine"),
+        }),
+    );
+    update(&mut app, key(KeyCode::Esc));
+    update(&mut app, key(KeyCode::Char('e')));
+    assert!(app.editing.is_some());
+    update(&mut app, Event::Paste(shot.display().to_string()));
+    assert!(app.input.text().ends_with("shot.png"));
+    assert!(app.attached().is_empty());
+}

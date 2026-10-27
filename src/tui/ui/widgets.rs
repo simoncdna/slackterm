@@ -1022,7 +1022,8 @@ impl InputStyle {
 pub fn input_height(app: &App, width: u16, style: &InputStyle) -> u16 {
     let (chrome_w, chrome_h) = style.chrome();
     let (rows, _) = app.input.layout(width.saturating_sub(chrome_w));
-    rows.len().clamp(1, MAX_INPUT_ROWS) as u16 + chrome_h
+    let files = u16::from(!app.attached().is_empty());
+    rows.len().clamp(1, MAX_INPUT_ROWS) as u16 + chrome_h + files
 }
 
 /// Draws the composer. Only the box that receives typed text (`is_target`)
@@ -1067,6 +1068,28 @@ pub fn input_box(
             );
             inner
         }
+    };
+
+    let inner = match app.attached() {
+        files if is_target && !files.is_empty() => {
+            let [files_area, inner] =
+                Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(inner);
+            let names: Vec<String> = files
+                .iter()
+                .map(|file| format!("{} {}", file.name, format_size(file.size)))
+                .collect();
+            let room = (files_area.width as usize).saturating_sub(2);
+            let line = Line::from(vec![
+                Span::styled("📎", Style::new().fg(theme.accent)),
+                Span::styled(
+                    format!(" {}", truncate(&names.join(" · "), room)),
+                    Style::new().fg(theme.muted),
+                ),
+            ]);
+            frame.render_widget(Paragraph::new(line), files_area);
+            inner
+        }
+        _ => inner,
     };
 
     if !is_target || (app.input.is_empty() && !active) {
@@ -1203,9 +1226,14 @@ fn hints(app: &App) -> Vec<(String, &'static str)> {
             .into();
     }
     if app.mode == Mode::Insert {
-        return [("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")]
-            .map(|(key, label)| (key.to_string(), label))
-            .into();
+        let mut hints: Vec<(String, &'static str)> =
+            [("⏎", "send"), ("⇧⏎", "new line"), ("esc", "done")]
+                .map(|(key, label)| (key.to_string(), label))
+                .into();
+        if app.input.is_empty() && !app.attached().is_empty() {
+            hints.push(("⌫".to_string(), "remove file"));
+        }
+        return hints;
     }
     let keys = &app.keymap;
     let mut hints = match app.focus {

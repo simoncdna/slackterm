@@ -346,6 +346,65 @@ impl SlackClient {
             .error_for_status()?)
     }
 
+    /// Shares files in a conversation, `text` being their message: Slack
+    /// says where to upload each one, then shares them together.
+    pub async fn upload_files(
+        &self,
+        channel: &str,
+        thread_ts: Option<&str>,
+        text: &str,
+        files: Vec<(String, Vec<u8>)>,
+    ) -> Result<(), SlackError> {
+        let mut uploaded = Vec::new();
+        for (name, bytes) in files {
+            let params = vec![
+                ("filename", name.clone()),
+                ("length", bytes.len().to_string()),
+            ];
+            let body = self
+                .call_value("files.getUploadURLExternal", &params)
+                .await?;
+            let (Some(url), Some(id)) = (body["upload_url"].as_str(), body["file_id"].as_str())
+            else {
+                return Err(SlackError::Api("no upload address".into()));
+            };
+            if !self.is_upload_url(url) {
+                return Err(SlackError::Api(format!("not a Slack address: {url}")));
+            }
+            // The address is signed: the file goes without the session.
+            self.http
+                .post(url)
+                .body(bytes)
+                .send()
+                .await?
+                .error_for_status()?;
+            uploaded.push(serde_json::json!({"id": id, "title": name}));
+        }
+        let mut params = vec![
+            ("files", Value::Array(uploaded).to_string()),
+            ("channel_id", channel.into()),
+        ];
+        if !text.is_empty() {
+            params.push(("initial_comment", text.into()));
+        }
+        if let Some(thread_ts) = thread_ts {
+            params.push(("thread_ts", thread_ts.into()));
+        }
+        self.call_value("files.completeUploadExternal", &params)
+            .await?;
+        Ok(())
+    }
+
+    /// Where files may be uploaded: Slack's servers, or the one standing in
+    /// for Slack in tests.
+    fn is_upload_url(&self, url: &str) -> bool {
+        let same_origin = reqwest::Url::parse(url)
+            .ok()
+            .zip(reqwest::Url::parse(&self.api_base).ok())
+            .is_some_and(|(url, api)| url.origin() == api.origin());
+        is_slack_file_url(url) || same_origin
+    }
+
     pub async fn conversations_mark(&self, channel: &str, ts: &str) -> Result<(), SlackError> {
         let params = vec![("channel", channel.into()), ("ts", ts.into())];
         self.call_value("conversations.mark", &params).await?;
@@ -445,6 +504,65 @@ mod tests {
 
     fn client(server: &MockServer) -> SlackClient {
         SlackClient::new(&server.uri(), "xoxc-1", "xoxd-abc").unwrap()
+    }
+
+    #[tokio::test]
+    async fn uploads_files_then_shares_them_together() {
+        let server = MockServer::start().await;
+        let ask = |file: &str, length: &str, id: &str| {
+            Mock::given(path("/files.getUploadURLExternal"))
+                .and(body_string_contains(format!("filename={file}")))
+                .and(body_string_contains(format!("length={length}")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                    "ok": true,
+                    "upload_url": format!("{}/upload/{id}", server.uri()),
+                    "file_id": id
+                })))
+                .expect(1)
+        };
+        ask("a.txt", "3", "F1").mount(&server).await;
+        ask("b.png", "4", "F2").mount(&server).await;
+        for (id, content) in [("F1", "abc"), ("F2", "png!")] {
+            Mock::given(path(format!("/upload/{id}")))
+                .and(wiremock::matchers::body_string(content))
+                .respond_with(ResponseTemplate::new(200))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        Mock::given(path("/files.completeUploadExternal"))
+            .and(body_string_contains("channel_id=C1"))
+            .and(body_string_contains("thread_ts=1.0"))
+            .and(body_string_contains("initial_comment=here+you+go"))
+            .and(body_string_contains("F1"))
+            .and(body_string_contains("F2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let files = vec![
+            ("a.txt".to_string(), b"abc".to_vec()),
+            ("b.png".to_string(), b"png!".to_vec()),
+        ];
+        client(&server)
+            .upload_files("C1", Some("1.0"), "here you go", files)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn files_only_go_to_slack() {
+        let server = MockServer::start().await;
+        Mock::given(path("/files.getUploadURLExternal"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true, "upload_url": "https://evil.example/upload", "file_id": "F1"
+            })))
+            .mount(&server)
+            .await;
+        let files = vec![("a.txt".to_string(), b"secret".to_vec())];
+        let result = client(&server).upload_files("C1", None, "", files).await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

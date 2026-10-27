@@ -329,6 +329,7 @@ fn on_insert_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Char('j') if ctrl => app.input.insert('\n'),
         KeyCode::Enter => return send(app),
         KeyCode::Backspace if key.modifiers.contains(KeyModifiers::ALT) => app.input.delete_word(),
+        KeyCode::Backspace if app.input.is_empty() => detach_last(app),
         KeyCode::Backspace => app.input.backspace(),
         KeyCode::Delete => app.input.delete(),
         KeyCode::Left => app.input.left(),
@@ -381,7 +382,7 @@ fn on_suggestions_key(app: &mut App, key: KeyEvent) -> bool {
 }
 
 fn send(app: &mut App) -> Vec<Command> {
-    if app.input.text().trim().is_empty() {
+    if app.input.text().trim().is_empty() && app.attached().is_empty() {
         return Vec::new();
     }
     if let Some(editing) = app.editing.take() {
@@ -398,9 +399,38 @@ fn send(app: &mut App) -> Vec<Command> {
     };
     let typed = app.input.take();
     let text = compose::encode(typed.trim(), app);
-    vec![Command::Send {
+    let attached = app
+        .draft_key
+        .as_ref()
+        .and_then(|key| app.attachments.remove(key))
+        .unwrap_or_default();
+    if attached.is_empty() {
+        return vec![Command::Send {
+            channel,
+            text,
+            thread_ts,
+        }];
+    }
+    app.notice = Some(match attached.as_slice() {
+        [file] => format!("sending {}…", file.name),
+        files => format!("sending {} files…", files.len()),
+    });
+    vec![Command::Upload {
         channel,
         text,
         thread_ts,
+        files: attached.into_iter().map(|file| file.path).collect(),
     }]
+}
+
+/// Backspace in an empty message box takes back the last file attached.
+fn detach_last(app: &mut App) {
+    let removed = app
+        .draft_key
+        .as_ref()
+        .and_then(|key| app.attachments.get_mut(key))
+        .and_then(Vec::pop);
+    if let Some(file) = removed {
+        app.notice = Some(format!("{} removed", file.name));
+    }
 }

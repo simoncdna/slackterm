@@ -316,6 +316,14 @@ pub enum Overlay {
     DeleteMessage(ReactionTarget),
 }
 
+/// A file to send with the next message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attachment {
+    pub path: PathBuf,
+    pub name: String,
+    pub size: u64,
+}
+
 /// One of the user's messages, being rewritten in the message box.
 #[derive(Debug)]
 pub struct Editing {
@@ -436,6 +444,9 @@ pub struct App {
     pub drafts: HashMap<String, Input>,
     /// Where `input` is being written to.
     pub draft_key: Option<String>,
+    /// Files to send, by [`draft_key`], so that each conversation and
+    /// thread keeps its own.
+    pub attachments: HashMap<String, Vec<Attachment>>,
     /// Every workspace the user is signed in to, this one included.
     pub workspaces: Vec<WorkspaceTab>,
     /// This workspace's place in `workspaces`.
@@ -503,6 +514,7 @@ impl App {
             editing: None,
             drafts: HashMap::new(),
             draft_key: None,
+            attachments: HashMap::new(),
             workspaces: Vec::new(),
             workspace: 0,
             visible: true,
@@ -1092,6 +1104,14 @@ impl App {
     pub fn draft(&self, channel: &str, thread_ts: Option<&str>) -> Option<&str> {
         let draft = self.drafts.get(&draft_key(channel, thread_ts))?;
         Some(draft.text()).filter(|text| !text.trim().is_empty())
+    }
+
+    /// The files that go with the message being written.
+    pub fn attached(&self) -> &[Attachment] {
+        self.draft_key
+            .as_ref()
+            .and_then(|key| self.attachments.get(key))
+            .map_or(&[], Vec::as_slice)
     }
 }
 

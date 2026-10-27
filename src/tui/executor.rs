@@ -147,6 +147,30 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
             .await
             .map(|message| ApiEvent::Sent { channel, message })
             .map_err(failed("send"))?,
+        Command::Upload {
+            channel,
+            text,
+            thread_ts,
+            files,
+        } => {
+            let mut loaded = Vec::with_capacity(files.len());
+            for path in &files {
+                let name = path
+                    .file_name()
+                    .map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
+                let bytes = tokio::fs::read(path)
+                    .await
+                    .map_err(|e| Failure::Other(format!("{name}: {e}")))?;
+                loaded.push((name, bytes));
+            }
+            let names: Vec<String> = loaded.iter().map(|(name, _)| name.clone()).collect();
+            client
+                .upload_files(&channel, thread_ts.as_deref(), &text, loaded)
+                .await
+                .map_err(failed("upload"))?;
+            // The message comes back in real time, like anyone's.
+            ApiEvent::Notice(format!("sent {}", names.join(", ")))
+        }
         Command::MarkRead { channel, ts } => {
             client
                 .conversations_mark(&channel, &ts)

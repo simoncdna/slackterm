@@ -12,7 +12,7 @@ use tokio::task::JoinHandle;
 
 use crate::session::Workspace;
 use crate::slack::rtm::RtmEvent;
-use crate::slack::{Conversation, HIGHLIGHT_END, HIGHLIGHT_START, Message, SearchMatch};
+use crate::slack::{Conversation, File, HIGHLIGHT_END, HIGHLIGHT_START, Message, SearchMatch};
 
 use super::update::{ApiEvent, Command, Event};
 use content::{Content, ME};
@@ -165,7 +165,30 @@ impl Demo {
                 channel,
                 text,
                 thread_ts,
-            } => self.send(channel, text, thread_ts, events).await,
+            } => {
+                self.send(channel, text, thread_ts, Vec::new(), events)
+                    .await
+            }
+            Command::Upload {
+                channel,
+                text,
+                thread_ts,
+                files,
+            } => {
+                let files = files
+                    .iter()
+                    .map(|path| File {
+                        name: path
+                            .file_name()
+                            .map_or_else(String::new, |n| n.to_string_lossy().into_owned()),
+                        size: std::fs::metadata(path).map_or(0, |m| m.len()),
+                        ..File::default()
+                    })
+                    .collect::<Vec<_>>();
+                let names: Vec<String> = files.iter().map(|file| file.name.clone()).collect();
+                send(ApiEvent::Notice(format!("sent {}", names.join(", "))));
+                self.send(channel, text, thread_ts, files, events).await;
+            }
             Command::LoadEmoji => {
                 let custom = ["atelier", "shipit", "party-parrot"]
                     .into_iter()
@@ -251,10 +274,12 @@ impl Demo {
         channel: String,
         text: String,
         thread_ts: Option<String>,
+        files: Vec<File>,
         events: &UnboundedSender<Event>,
     ) {
         let mut message = content::message(&now_ts(), ME, &text);
         message.thread_ts = thread_ts.clone();
+        message.files = files;
         let (stored, partner, reactor, sent) = {
             let mut state = self.state();
             let stored = state.store(&channel, message.clone());
