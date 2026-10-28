@@ -4,6 +4,8 @@ What changes from one version of slackterm to the next. The format follows [Keep
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
 ### Added
 
 - Several workspaces at once: `w` or Ctrl+K switches between them, the status bar tells what waits in the others, and slackterm opens the last one you used. The others stay connected, and what arrives there stays unread until you look.
@@ -66,6 +68,7 @@ The first release.
 - Sign in through your browser. Credentials go to the system keychain, or to a file only you can read where there is none.
 - Runs on macOS, Linux and Windows; installs with Homebrew, the install scripts or Cargo.
 
-[Unreleased]: https://github.com/simoncdna/slackterm/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/simoncdna/slackterm/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/simoncdna/slackterm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/simoncdna/slackterm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/simoncdna/slackterm/releases/tag/v0.1.0
