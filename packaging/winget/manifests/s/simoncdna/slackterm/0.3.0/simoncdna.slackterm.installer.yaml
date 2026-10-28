@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 
 PackageIdentifier: simoncdna.slackterm
-PackageVersion: 0.2.0
+PackageVersion: 0.3.0
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
@@ -9,10 +9,10 @@ NestedInstallerFiles:
   PortableCommandAlias: slackterm
 Commands:
 - slackterm
-ReleaseDate: 2026-10-20
+ReleaseDate: 2026-10-28
 Installers:
 - Architecture: x64
-  InstallerUrl: https://github.com/simoncdna/slackterm/releases/download/v0.2.0/slackterm-x86_64-pc-windows-msvc.zip
-  InstallerSha256: 62712A0633A56E77D15F2B052A8A86A08FD1F759756F4FAF677024CEF84D915C
+  InstallerUrl: https://github.com/simoncdna/slackterm/releases/download/v0.3.0/slackterm-x86_64-pc-windows-msvc.zip
+  InstallerSha256: 467B7B6D45E81F7006B39AE21FED7DE74EE8DACDB3F774939F08A0725B315FC7
 ManifestType: installer
 ManifestVersion: 1.10.0

@@ -1,12 +1,12 @@
 {
-    "version": "0.2.0",
+    "version": "0.3.0",
     "description": "Slack in your terminal: real time, threads, search and sections, all from the keyboard",
     "homepage": "https://github.com/simoncdna/slackterm",
     "license": "MIT|Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/simoncdna/slackterm/releases/download/v0.2.0/slackterm-x86_64-pc-windows-msvc.zip",
-            "hash": "62712a0633a56e77d15f2b052a8a86a08fd1f759756f4faf677024cef84d915c"
+            "url": "https://github.com/simoncdna/slackterm/releases/download/v0.3.0/slackterm-x86_64-pc-windows-msvc.zip",
+            "hash": "467b7b6d45e81f7006b39ae21fed7de74ee8dacdb3f774939f08a0725b315fc7"
         }
     },
     "bin": "slackterm.exe",

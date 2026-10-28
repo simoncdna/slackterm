@@ -5,7 +5,7 @@ The release workflow publishes Homebrew, the install scripts and the binaries by
 The release assets have a `.sha256` file next to them, which gives the checksums these recipes ask for:
 
 ```sh
-curl -sL https://github.com/simoncdna/slackterm/releases/download/v0.2.0/slackterm-x86_64-pc-windows-msvc.zip.sha256
+curl -sL https://github.com/simoncdna/slackterm/releases/download/v0.3.0/slackterm-x86_64-pc-windows-msvc.zip.sha256
 ```
 
 ## AUR (Arch Linux)
@@ -17,7 +17,7 @@ The first time, with an [AUR account](https://aur.archlinux.org/register) that h
 ```sh
 git clone ssh://aur@aur.archlinux.org/slackterm-bin.git
 cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO slackterm-bin/
-cd slackterm-bin && git add PKGBUILD .SRCINFO && git commit -m "slackterm-bin 0.2.0" && git push
+cd slackterm-bin && git add PKGBUILD .SRCINFO && git commit -m "slackterm-bin 0.3.0" && git push
 ```
 
 At each release: change `pkgver`, put `pkgrel` back to 1, update both `sha256sums`, then regenerate `.SRCINFO` with `makepkg --printsrcinfo > .SRCINFO` and push both files again.
@@ -47,12 +47,12 @@ At each release: nothing. The template's workflow checks GitHub for a new versio
 
 `winget/manifests/` follows the layout of [microsoft/winget-pkgs](https://github.com/microsoft/winget-pkgs), where the package goes as `simoncdna.slackterm`.
 
-The first time: fork microsoft/winget-pkgs, copy `manifests/s/simoncdna/slackterm/0.2.0` to the same place, and open a pull request. Their pipeline installs the package in a sandbox before a moderator merges it. With [wingetcreate](https://github.com/microsoft/winget-create), `wingetcreate submit <folder>` does the fork and the pull request.
+The first time: fork microsoft/winget-pkgs, copy `manifests/s/simoncdna/slackterm/0.3.0` to the same place, and open a pull request. Their pipeline installs the package in a sandbox before a moderator merges it. With [wingetcreate](https://github.com/microsoft/winget-create), `wingetcreate submit <folder>` does the fork and the pull request.
 
 At each release:
 
 ```powershell
-wingetcreate update simoncdna.slackterm --version 0.3.0 --urls https://github.com/simoncdna/slackterm/releases/download/v0.3.0/slackterm-x86_64-pc-windows-msvc.zip --submit
+wingetcreate update simoncdna.slackterm --version 0.4.0 --urls https://github.com/simoncdna/slackterm/releases/download/v0.4.0/slackterm-x86_64-pc-windows-msvc.zip --submit
 ```
 
 ## nixpkgs
