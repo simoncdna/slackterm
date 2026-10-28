@@ -5,8 +5,9 @@ use ratatui::style::Color;
 use serde::Serialize;
 
 use crate::config::{
-    Accent, AvatarStyle, Choice, Clock, Layout, Mouse, Notifications, Settings, ThemeName,
+    Accent, AvatarStyle, Choice, Clock, Colors, Layout, Mouse, Notifications, Settings, ThemeName,
 };
+use crate::themes::UserTheme;
 
 use super::keymap::ACTIONS;
 use super::theme::Theme;
@@ -39,7 +40,11 @@ const COLORS: &str = "
 pub fn default_config() -> String {
     let mut out = HEADER.to_string();
     option::<Layout>(&mut out, "layout");
-    option::<ThemeName>(&mut out, "theme");
+    line(
+        &mut out,
+        "theme = \"night\"",
+        "night | light | gruvbox | nord, or one of yours in themes/",
+    );
     option::<Accent>(&mut out, "accent");
     option::<AvatarStyle>(&mut out, "avatars");
     option::<Clock>(&mut out, "clock");
@@ -66,30 +71,62 @@ pub fn default_config() -> String {
     }
 
     out.push_str(COLORS);
-    let night = Theme::from_settings(&Settings::default());
-    let colors = [
-        ("bg", night.bg, "Background"),
-        ("surface", night.surface, "Selected rows"),
-        ("panel", night.panel, "Bars, code blocks and popups"),
-        ("border", night.border, "Borders"),
-        ("fg", night.fg, "Text"),
-        ("muted", night.muted, "Secondary text"),
-        ("accent", night.accent, "Titles, selection, mentions of you"),
-        ("on_accent", night.on_accent, "Text on the accent color"),
-        ("unread", night.unread, "Unread counts and errors"),
-        ("link", night.link, "Links, channels and mentions"),
-        ("success", night.success, "Connected"),
-    ];
-    for (name, color, help) in colors {
-        line(&mut out, &format!("{name} = {}", quote(&hex(color))), help);
+    for (option, help) in color_options(&Theme::from_settings(&Settings::default())) {
+        line(&mut out, &option, help);
     }
-    let nicks: Vec<String> = night.nicks.iter().map(|c| quote(&hex(*c))).collect();
-    line(
-        &mut out,
-        &format!("nicks = [{}]", nicks.join(", ")),
-        "Names, one color per person",
-    );
     out
+}
+
+/// A theme file with every color of `from`, for the user to change.
+pub fn theme_file(name: &str, from: ThemeName, themes: &[UserTheme]) -> String {
+    let settings = Settings {
+        theme: from,
+        ..Settings::default()
+    };
+    let base = themes
+        .iter()
+        .find(|theme| theme.name == from)
+        .map_or(from, |theme| theme.base);
+    let theme = Theme::new(&settings, themes, &Colors::default());
+    let mut out = format!(
+        "# The {name} theme of slackterm, picked in the settings (`,`) or with\n\
+         # `theme = {}` in config.toml. Colors are \"#rrggbb\", a terminal color\n\
+         # name such as \"red\", a palette index such as \"42\", or \"reset\" for\n\
+         # the terminal's own. Those left out come from `base`.\n\n",
+        quote(name)
+    );
+    out.push_str(&format!("base = {}\n\n", quote(base.key())));
+    for (option, help) in color_options(&theme) {
+        out.push_str(&format!("{option:<36} # {help}\n"));
+    }
+    out
+}
+
+/// Each color of `theme` as written in a file, with what it colors.
+fn color_options(theme: &Theme) -> Vec<(String, &'static str)> {
+    let colors = [
+        ("bg", theme.bg, "Background"),
+        ("surface", theme.surface, "Selected rows"),
+        ("panel", theme.panel, "Bars, code blocks and popups"),
+        ("border", theme.border, "Borders"),
+        ("fg", theme.fg, "Text"),
+        ("muted", theme.muted, "Secondary text"),
+        ("accent", theme.accent, "Titles, selection, mentions of you"),
+        ("on_accent", theme.on_accent, "Text on the accent color"),
+        ("unread", theme.unread, "Unread counts and errors"),
+        ("link", theme.link, "Links, channels and mentions"),
+        ("success", theme.success, "Connected"),
+    ];
+    let mut options: Vec<(String, &'static str)> = colors
+        .into_iter()
+        .map(|(name, color, help)| (format!("{name} = {}", quote(&hex(color))), help))
+        .collect();
+    let nicks: Vec<String> = theme.nicks.iter().map(|c| quote(&hex(*c))).collect();
+    options.push((
+        format!("nicks = [{}]", nicks.join(", ")),
+        "Names, one color per person",
+    ));
+    options
 }
 
 /// A setting with its default value and the values it takes.
@@ -150,6 +187,24 @@ mod tests {
     }
 
     #[test]
+    fn a_new_theme_file_gives_back_its_starting_theme() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mine.toml");
+        std::fs::write(&path, theme_file("mine", ThemeName::Gruvbox, &[])).unwrap();
+        let mine = crate::themes::read(&path).unwrap();
+        assert_eq!(mine.base, ThemeName::Gruvbox);
+
+        let theme = |name| {
+            let settings = Settings {
+                theme: name,
+                ..Settings::default()
+            };
+            Theme::new(&settings, std::slice::from_ref(&mine), &Colors::default())
+        };
+        assert_eq!(theme(ThemeName::named("mine")), theme(ThemeName::Gruvbox));
+    }
+
+    #[test]
     fn as_written_it_changes_nothing() {
         assert_eq!(
             Config::from_toml(&default_config()).unwrap(),
@@ -166,7 +221,7 @@ mod tests {
         assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(keymap, Keymap::default());
         assert_eq!(config.keys.len(), ACTIONS.len());
-        let theme = Theme::new(&config.settings, &config.colors);
+        let theme = Theme::new(&config.settings, &[], &config.colors);
         assert_eq!(theme, Theme::from_settings(&Settings::default()));
     }
 }

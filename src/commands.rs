@@ -4,11 +4,12 @@ use std::time::Duration;
 use anyhow::{Context, Result, bail};
 
 use crate::auth::{browser, manual};
-use crate::config::Config;
+use crate::config::{Choice, Config, ThemeName};
 use crate::platform::find_program;
 use crate::session::{RawCredentials, Session, Workspace, normalize_cookie_d};
 use crate::slack::{SlackClient, SlackError};
 use crate::store::{Saved, SessionStore, SystemStore};
+use crate::themes::{self, themes_dir};
 
 pub struct LoginOptions {
     pub manual: bool,
@@ -258,6 +259,29 @@ pub async fn doctor(store: &SystemStore, api_base: &str, config_path: &Path) -> 
         }
     }
 
+    let dir = themes_dir(config_path);
+    let (themes, problems) = themes::load(&dir);
+    if themes.is_empty() && problems.is_empty() {
+        report(
+            Check::Missing,
+            "Themes",
+            format!(
+                "none of yours in {}: `slackterm theme new <name>` makes one",
+                dir.display()
+            ),
+        );
+    } else if !themes.is_empty() {
+        let names: Vec<&str> = themes.iter().map(|theme| theme.name.key()).collect();
+        report(
+            Check::Ok,
+            "Themes",
+            format!("{}, in {}", names.join(", "), dir.display()),
+        );
+    }
+    for problem in problems {
+        report(Check::Problem, "Themes", problem);
+    }
+
     match browser::find_browser() {
         Some(path) => report(Check::Ok, "Browser", path.display()),
         None => report(
@@ -318,12 +342,21 @@ pub fn config(path: &Path, options: ConfigOptions) -> Result<()> {
             path.display()
         );
     }
+    if open_in_editor(path)? {
+        check_config(path);
+    }
+    Ok(())
+}
+
+/// Opens `path` in the user's editor, and returns once it is closed. With
+/// no editor, says where the file is and returns false.
+fn open_in_editor(path: &Path) -> Result<bool> {
     let Some(editor) = editor() else {
         println!(
             "Edit {} (set $EDITOR to open it from here).",
             path.display()
         );
-        return Ok(());
+        return Ok(false);
     };
     let mut words = editor.split_whitespace();
     let program = words.next().context("$EDITOR is empty")?;
@@ -335,7 +368,80 @@ pub fn config(path: &Path, options: ConfigOptions) -> Result<()> {
     if !status.success() {
         bail!("{program} stopped ({status})");
     }
-    check_config(path);
+    Ok(true)
+}
+
+/// `slackterm theme new`: a theme file with every color of `from`, opened
+/// in the editor, then checked.
+pub fn theme_new(config_path: &Path, name: &str, from: &str) -> Result<()> {
+    let valid = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_'));
+    if !valid {
+        bail!("name the theme with letters, digits, - and _ only, like `my-theme`");
+    }
+    if !matches!(ThemeName::named(name), ThemeName::Custom(_)) {
+        bail!("{name} is a built-in theme: name yours otherwise");
+    }
+    let dir = themes_dir(config_path);
+    let (themes, _) = themes::load(&dir);
+    let from = ThemeName::named(from);
+    if matches!(from, ThemeName::Custom(_)) && !themes.iter().any(|t| t.name == from) {
+        bail!(
+            "no theme {} to start from: night, light, gruvbox, nord or one in {}",
+            from.key(),
+            dir.display()
+        );
+    }
+    let path = dir.join(format!("{name}.toml"));
+    if path.exists() {
+        println!("{} exists: opening it.", path.display());
+    } else {
+        std::fs::create_dir_all(&dir)
+            .with_context(|| format!("could not create {}", dir.display()))?;
+        std::fs::write(&path, crate::tui::theme_file(name, from, &themes))
+            .with_context(|| format!("could not write {}", path.display()))?;
+        println!(
+            "Created {}, with the colors of {}.",
+            path.display(),
+            from.label()
+        );
+    }
+    if open_in_editor(&path)? {
+        match themes::read(&path) {
+            Ok(_) => println!(
+                "✓ {name} is valid: pick it in the settings (`,`), or set `theme = \"{name}\"`."
+            ),
+            Err(e) => println!("✕ {e:#}"),
+        }
+    }
+    Ok(())
+}
+
+/// `slackterm theme list`: the built-in themes, the user's and where they
+/// go, and the one in use.
+pub fn theme_list(config_path: &Path) -> Result<()> {
+    let in_use = Config::load(config_path)
+        .map(|config| config.settings.theme)
+        .unwrap_or_default();
+    let mark = |theme: ThemeName| if theme == in_use { "  ← in use" } else { "" };
+    println!("Built in:");
+    for theme in ThemeName::ALL {
+        println!("  {}{}", theme.key(), mark(*theme));
+    }
+    let dir = themes_dir(config_path);
+    let (themes, problems) = themes::load(&dir);
+    println!("\nYours, in {}:", dir.display());
+    if themes.is_empty() && problems.is_empty() {
+        println!("  none yet: `slackterm theme new <name>` creates one");
+    }
+    for theme in &themes {
+        println!("  {}{}", theme.name.key(), mark(theme.name));
+    }
+    for problem in problems {
+        println!("  ✕ {problem}");
+    }
     Ok(())
 }
 

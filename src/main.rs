@@ -54,6 +54,11 @@ enum Command {
         #[arg(value_name = "SHELL")]
         shell: Shell,
     },
+    /// Make your own themes, and list them
+    Theme {
+        #[command(subcommand)]
+        action: ThemeAction,
+    },
     /// Open the config file in your editor ($VISUAL or $EDITOR)
     Config {
         /// Only print where the config file is
@@ -63,6 +68,20 @@ enum Command {
         #[arg(long)]
         default: bool,
     },
+}
+
+#[derive(Subcommand)]
+enum ThemeAction {
+    /// Write a theme with every color of another one, and open it in your editor
+    New {
+        /// Its name, which is also its file's
+        name: String,
+        /// The theme whose colors it starts with
+        #[arg(long, value_name = "THEME", default_value = "night")]
+        from: String,
+    },
+    /// List the themes, and where yours go
+    List,
 }
 
 fn main() -> Result<()> {
@@ -109,7 +128,7 @@ async fn run() -> Result<()> {
         }
         Command::Logout => commands::logout(&store),
         Command::Status => commands::status(&store, DEFAULT_API_BASE).await,
-        Command::Demo => slackterm::tui::run_demo().await,
+        Command::Demo => slackterm::tui::run_demo(config_path(cli.config)?).await,
         Command::Completions { shell } => {
             clap_complete::generate(
                 shell,
@@ -124,6 +143,13 @@ async fn run() -> Result<()> {
         }
         Command::Config { path, default } => {
             commands::config(&config_path(cli.config)?, ConfigOptions { path, default })
+        }
+        Command::Theme { action } => {
+            let path = config_path(cli.config)?;
+            match action {
+                ThemeAction::New { name, from } => commands::theme_new(&path, &name, &from),
+                ThemeAction::List => commands::theme_list(&path),
+            }
         }
     }
 }

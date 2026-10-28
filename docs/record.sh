@@ -9,6 +9,10 @@ cd "$(dirname "$0")/.."
 
 cargo build --release
 mkdir -p docs/media target/vhs
+# The demo offers the themes of the config folder: none here, so that the
+# videos are the same on every machine.
+XDG_CONFIG_HOME="$(mktemp -d)"
+export XDG_CONFIG_HOME
 
 tapes=("$@")
 if [ ${#tapes[@]} -eq 0 ]; then

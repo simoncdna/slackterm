@@ -18,10 +18,12 @@ What changes from one version of slackterm to the next. The format follows [Keep
 - Notifications for direct messages, mentions and replies in your threads, from every workspace, unless you are reading the conversation. The terminal shows them where it can, over SSH too, else the system does; `notifications = "off"` turns them off.
 - New replies in the threads you started, replied in or follow show as `new` until you open them.
 - Opening a conversation with unread messages marks where they start with a `new` rule, as Slack does.
+- Themes of your own: TOML files in `~/.config/slackterm/themes/`, offered in the settings after the built-in themes, and in `slackterm demo` to try them. `slackterm theme new` starts one from any theme, `slackterm theme list` lists them.
 - Static Linux builds, linked with musl, for x86_64 and ARM: they run on any distribution, and the install script picks them where the usual ones would not.
 
 ### Changed
 
+- On macOS, the config file goes to `~/.config/slackterm/` too, where terminal programs keep theirs. One already in `~/Library/Application Support/slackterm/` is still read.
 - Folded sections and the open tab are remembered for each workspace.
 - What you do in Slack's other apps shows at once: conversations read there are read here too, and so do conversations joined, left, renamed or muted.
 - The other workspaces show above the sidebar rather than in the status bar, which keeps room for the keys.

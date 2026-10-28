@@ -10,6 +10,7 @@ use crate::slack::{
     ChannelSection, Conversation, ConversationCount, Message, SearchChannel, SearchMatch, User,
     emoji, mrkdwn,
 };
+use crate::themes::UserTheme;
 
 use super::compose::Completion;
 use super::fuzzy::fuzzy_match;
@@ -397,6 +398,10 @@ pub struct App {
     pub keymap: Keymap,
     /// Colors of the config file, over the theme's.
     pub colors: Colors,
+    /// The user's themes, offered after the built-in ones.
+    pub themes: Vec<UserTheme>,
+    /// Where the user's themes are read from.
+    pub themes_dir: Option<PathBuf>,
     /// How far the help can scroll, known once it is drawn.
     pub help_max_scroll: Cell<usize>,
     pub users: HashMap<String, User>,
@@ -493,6 +498,8 @@ impl App {
             settings_path: None,
             keymap: Keymap::default(),
             colors: Colors::default(),
+            themes: Vec::new(),
+            themes_dir: None,
             help_max_scroll: Cell::new(0),
             users: HashMap::new(),
             channels: Vec::new(),

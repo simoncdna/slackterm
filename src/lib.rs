@@ -6,4 +6,5 @@ pub mod platform;
 pub mod session;
 pub mod slack;
 pub mod store;
+pub mod themes;
 pub mod tui;

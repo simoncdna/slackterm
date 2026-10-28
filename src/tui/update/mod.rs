@@ -159,6 +159,9 @@ pub enum Command {
     /// Show the next workspace with unread messages, and open them. Run by
     /// the event loop.
     NextUnreadWorkspace,
+    /// Read the user's themes again, which they may have just written. Run
+    /// by the event loop, which gives them to every workspace.
+    LoadThemes,
     /// Put text on the user's clipboard, saying what it was. Run by the
     /// event loop, which owns the terminal.
     Copy {

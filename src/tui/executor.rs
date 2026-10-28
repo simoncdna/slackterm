@@ -260,7 +260,8 @@ async fn run(command: Command, client: &SlackClient) -> Result<Option<ApiEvent>,
         | Command::SwitchWorkspace(_)
         | Command::NextUnreadWorkspace
         | Command::Copy { .. }
-        | Command::Notify { .. } => return Ok(None),
+        | Command::Notify { .. }
+        | Command::LoadThemes => return Ok(None),
         Command::RememberWorkspace(team) => {
             SidebarFile::save_workspace(&team)
                 .map_err(|e| Failure::Other(format!("sidebar: {e:#}")))?;

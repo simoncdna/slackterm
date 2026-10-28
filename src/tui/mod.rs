@@ -29,10 +29,11 @@ use ratatui::DefaultTerminal;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 
-use crate::config::{Config, Mouse, Settings, SidebarFile};
+use crate::config::{Config, Mouse, Settings, SidebarFile, ThemeName};
 use crate::platform;
 use crate::session::Session;
 use crate::slack::{DEFAULT_API_BASE, SlackClient, rtm};
+use crate::themes::{self, themes_dir};
 
 use keymap::Keymap;
 use state::App;
@@ -40,7 +41,7 @@ use terminal_events::TerminalEvents;
 use update::{Command, Event, initial_commands, update};
 
 pub use pictures::reveal_tmux;
-pub use template::default_config;
+pub use template::{default_config, theme_file};
 
 /// What the terminal can do, for `slackterm doctor`.
 pub struct TerminalSupport {
@@ -80,11 +81,24 @@ pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
         Ok(config) => (config, None),
         Err(e) => (Config::default(), Some(format!("{e:#}"))),
     };
-    let (keymap, key_problems) = Keymap::new(&config.keys);
+    let (keymap, mut problems) = Keymap::new(&config.keys);
+    let dir = themes_dir(&config_path);
+    let (themes, theme_problems) = themes::load(&dir);
+    problems.extend(theme_problems);
+    if let ThemeName::Custom(name) = config.settings.theme
+        && !themes
+            .iter()
+            .any(|theme| theme.name == config.settings.theme)
+    {
+        problems.push(format!(
+            "no theme {name} in {}: Night instead",
+            dir.display()
+        ));
+    }
     if let Some(error) = &config_error {
         tracing::warn!(%error, "config");
     }
-    for problem in &key_problems {
+    for problem in &problems {
         tracing::warn!(%problem, "config");
     }
     let sidebar = SidebarFile::load();
@@ -101,6 +115,8 @@ pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
         let mut app = App::new(workspace, config.settings);
         app.keymap = keymap.clone();
         app.colors = config.colors;
+        app.themes = themes.clone();
+        app.themes_dir = Some(dir.clone());
         app.settings_path = Some(config_path.clone());
         let state = sidebar.state(&workspace.team_id);
         app.collapsed = state.collapsed;
@@ -112,7 +128,7 @@ pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
         .and_then(|team| session.workspaces.iter().position(|w| w.team_id == team))
         .unwrap_or(0);
     apps[active].notice =
-        config_error.or_else(|| (!key_problems.is_empty()).then(|| key_problems.join(" · ")));
+        config_error.or_else(|| (!problems.is_empty()).then(|| problems.join(" · ")));
 
     let instances = apps
         .into_iter()
@@ -130,8 +146,11 @@ pub async fn run(session: Session, config_path: PathBuf) -> Result<()> {
 }
 
 /// Opens the interface on a made-up workspace, without network access and
-/// without reading or writing the user's settings.
-pub async fn run_demo() -> Result<()> {
+/// without reading or writing the user's settings. The user's themes are
+/// offered, to try them without an account.
+pub async fn run_demo(config_path: PathBuf) -> Result<()> {
+    let dir = themes_dir(&config_path);
+    let (themes, problems) = themes::load(&dir);
     let demos = [
         (demo::Demo::new(), demo::workspace()),
         (demo::Demo::side(), demo::side_workspace()),
@@ -143,14 +162,22 @@ pub async fn run_demo() -> Result<()> {
         .zip(&senders)
         .map(|((demo, _), events)| demo.spawn_live(events.clone()))
         .collect();
-    let instances = demos
+    let mut instances: Vec<Instance> = demos
         .iter()
         .zip(&senders)
-        .map(|((demo, workspace), events)| Instance {
-            app: App::new(workspace, Settings::default()),
-            execute: Box::new(move |command| demo.execute(command, events)),
+        .map(|((demo, workspace), events)| {
+            let mut app = App::new(workspace, Settings::default());
+            app.themes = themes.clone();
+            app.themes_dir = Some(dir.clone());
+            Instance {
+                app,
+                execute: Box::new(move |command| demo.execute(command, events)),
+            }
         })
         .collect();
+    if !problems.is_empty() {
+        instances[0].app.notice = Some(problems.join(" · "));
+    }
     let result = run_app(instances, 0, events_rx).await;
     for task in live {
         task.abort();
@@ -335,6 +362,17 @@ async fn event_loop(
                         Ok(()) => format!("{what} copied"),
                         Err(e) => format!("could not copy the {what}: {e}"),
                     });
+                }
+                Command::LoadThemes => {
+                    if let Some(dir) = &instances[index].app.themes_dir {
+                        let (themes, problems) = themes::load(dir);
+                        for instance in instances.iter_mut() {
+                            instance.app.themes = themes.clone();
+                        }
+                        if !problems.is_empty() {
+                            instances[index].app.notice = Some(problems.join(" · "));
+                        }
+                    }
                 }
                 Command::Notify { title, body } => {
                     if let Err(e) = notifier.notify(&title, &body) {

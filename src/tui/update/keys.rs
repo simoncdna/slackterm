@@ -46,7 +46,12 @@ fn on_normal_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         Action::Quit => app.should_quit = true,
         Action::GoTo => open_switcher(app),
         Action::Search => open_search(app),
-        Action::Settings => app.overlay = Some(Overlay::Settings { row: 0 }),
+        Action::Settings => {
+            app.overlay = Some(Overlay::Settings { row: 0 });
+            if app.themes_dir.is_some() {
+                return vec![Command::LoadThemes];
+            }
+        }
         Action::Help => app.overlay = Some(Overlay::Help { scroll: 0 }),
         Action::NextPane => cycle_focus(app, 1),
         Action::PreviousPane => cycle_focus(app, -1),

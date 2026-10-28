@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use ratatui::style::Color;
@@ -41,17 +42,62 @@ impl Choice for Layout {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ThemeName {
-    // The aliases keep reading config files written by the French versions.
     #[default]
-    #[serde(alias = "nuit")]
     Night,
-    #[serde(alias = "clair")]
     Light,
     Gruvbox,
     Nord,
+    /// One of the user's, by the name of its file in `themes/`. Names are
+    /// kept for the whole run, once each, so that settings stay `Copy`.
+    Custom(&'static str),
+}
+
+impl ThemeName {
+    /// The built-in theme called `name`, else the user's.
+    pub fn named(name: &str) -> Self {
+        match name.to_lowercase().as_str() {
+            // The French names keep reading config files of the first versions.
+            "night" | "nuit" => Self::Night,
+            "light" | "clair" => Self::Light,
+            "gruvbox" => Self::Gruvbox,
+            "nord" => Self::Nord,
+            _ => {
+                static NAMES: Mutex<BTreeSet<&'static str>> = Mutex::new(BTreeSet::new());
+                let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+                let kept = match names.get(name) {
+                    Some(kept) => *kept,
+                    None => Box::leak(name.into()),
+                };
+                names.insert(kept);
+                Self::Custom(kept)
+            }
+        }
+    }
+
+    /// How the config file names it: `night`, `catppuccin`.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Night => "night",
+            Self::Light => "light",
+            Self::Gruvbox => "gruvbox",
+            Self::Nord => "nord",
+            Self::Custom(name) => name,
+        }
+    }
+}
+
+impl Serialize for ThemeName {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.key())
+    }
+}
+
+impl<'de> Deserialize<'de> for ThemeName {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(Self::named(&String::deserialize(deserializer)?))
+    }
 }
 
 impl Choice for ThemeName {
@@ -62,6 +108,7 @@ impl Choice for ThemeName {
             Self::Light => "Light",
             Self::Gruvbox => "Gruvbox",
             Self::Nord => "Nord",
+            Self::Custom(name) => name,
         }
     }
 }
@@ -318,17 +365,26 @@ pub fn config_path(chosen: Option<PathBuf>) -> Result<PathBuf> {
     if let Some(dir) = std::env::var_os("XDG_CONFIG_HOME").filter(|dir| !dir.is_empty()) {
         return Ok(PathBuf::from(dir).join("slackterm").join(FILE));
     }
+    let dirs = directories::ProjectDirs::from("", "", "slackterm")
+        .context("could not find the config directory")?;
+    let system = dirs.config_dir().join(FILE);
     if cfg!(target_os = "macos")
         && let Some(home) = std::env::var_os("HOME")
     {
-        let path = PathBuf::from(home).join(".config/slackterm").join(FILE);
-        if path.exists() {
-            return Ok(path);
-        }
+        let dot_config = PathBuf::from(home).join(".config/slackterm").join(FILE);
+        return Ok(on_macos(dot_config, system));
     }
-    let dirs = directories::ProjectDirs::from("", "", "slackterm")
-        .context("could not find the config directory")?;
-    Ok(dirs.config_dir().join(FILE))
+    Ok(system)
+}
+
+/// `~/.config`, where terminal programs keep their config on macOS too,
+/// unless only Application Support, where earlier versions wrote, has one.
+fn on_macos(dot_config: PathBuf, application_support: PathBuf) -> PathBuf {
+    if !dot_config.exists() && application_support.exists() {
+        application_support
+    } else {
+        dot_config
+    }
 }
 
 /// The keys of an action: one key, or a list.
@@ -499,6 +555,49 @@ mod tests {
         assert!(toml.contains("layout = \"stream\""));
         assert!(toml.contains("clock = \"12h\""));
         assert_eq!(Config::from_toml(&toml).unwrap().settings, settings);
+    }
+
+    #[test]
+    fn on_macos_the_config_goes_to_dot_config() {
+        let home = tempfile::tempdir().unwrap();
+        let dot_config = home.path().join(".config/slackterm/config.toml");
+        let support = home
+            .path()
+            .join("Library/Application Support/slackterm/config.toml");
+        assert_eq!(on_macos(dot_config.clone(), support.clone()), dot_config);
+
+        // A file left where earlier versions wrote is still read.
+        std::fs::create_dir_all(support.parent().unwrap()).unwrap();
+        std::fs::write(&support, "").unwrap();
+        assert_eq!(on_macos(dot_config.clone(), support.clone()), support);
+
+        std::fs::create_dir_all(dot_config.parent().unwrap()).unwrap();
+        std::fs::write(&dot_config, "").unwrap();
+        assert_eq!(on_macos(dot_config.clone(), support), dot_config);
+    }
+
+    #[test]
+    fn a_theme_is_built_in_or_the_users() {
+        let config = Config::from_toml("theme = \"catppuccin\"").unwrap();
+        assert_eq!(config.settings.theme, ThemeName::named("catppuccin"));
+        assert_eq!(config.settings.theme.key(), "catppuccin");
+        assert_eq!(
+            Config::from_toml("theme = \"nuit\"")
+                .unwrap()
+                .settings
+                .theme,
+            ThemeName::Night
+        );
+        let settings = Settings {
+            theme: ThemeName::named("catppuccin"),
+            ..Settings::default()
+        };
+        assert!(
+            settings
+                .write_into("")
+                .unwrap()
+                .contains("theme = \"catppuccin\"")
+        );
     }
 
     #[test]

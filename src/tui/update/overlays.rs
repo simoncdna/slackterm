@@ -1,6 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
+use crate::config::ThemeName;
+use crate::themes::UserTheme;
 use crate::tui::keymap::Action;
 
 pub(super) fn on_overlay_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
@@ -137,10 +139,11 @@ fn on_settings_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter | KeyCode::Char(' ') => 1,
         _ => return Vec::new(),
     };
+    let themes = &app.themes;
     let settings = &mut app.settings;
     match *row {
         0 => settings.layout = settings.layout.cycle(step),
-        1 => settings.theme = settings.theme.cycle(step),
+        1 => settings.theme = next_theme(settings.theme, themes, step),
         2 => settings.accent = settings.accent.cycle(step),
         3 => settings.avatars = settings.avatars.cycle(step),
         4 => settings.clock = settings.clock.cycle(step),
@@ -151,6 +154,17 @@ fn on_settings_key(app: &mut App, key: KeyEvent) -> Vec<Command> {
         app.focus = Focus::Messages;
     }
     Vec::new()
+}
+
+/// The built-in themes, then the user's.
+fn next_theme(current: ThemeName, themes: &[UserTheme], step: isize) -> ThemeName {
+    let all: Vec<ThemeName> = ThemeName::ALL
+        .iter()
+        .copied()
+        .chain(themes.iter().map(|theme| theme.name))
+        .collect();
+    let index = all.iter().position(|t| *t == current).unwrap_or(0) as isize;
+    all[(index + step).rem_euclid(all.len() as isize) as usize]
 }
 
 /// Enter runs the query when it changed, and otherwise opens the selected

@@ -240,7 +240,8 @@ impl Demo {
             | Command::RememberWorkspace(_)
             | Command::NextUnreadWorkspace
             | Command::Copy { .. }
-            | Command::Notify { .. } => {}
+            | Command::Notify { .. }
+            | Command::LoadThemes => {}
             Command::LoadMuted => send(ApiEvent::Muted(content::muted())),
             Command::LoadPublicChannels => send(ApiEvent::PublicChannels(
                 self.state().content.public_channels.clone(),

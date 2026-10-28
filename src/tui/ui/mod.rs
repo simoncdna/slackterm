@@ -14,7 +14,7 @@ use super::state::{App, Overlay};
 use super::theme::Theme;
 
 pub fn draw(frame: &mut Frame, app: &App, pictures: &mut Pictures) {
-    let theme = Theme::new(&app.settings, &app.colors);
+    let theme = Theme::new(&app.settings, &app.themes, &app.colors);
     pictures.begin_frame();
     app.screen.replace(Default::default());
     frame.render_widget(

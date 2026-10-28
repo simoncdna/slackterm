@@ -230,8 +230,7 @@ slackterm config --path      # print where the file is
 
 The first `slackterm config` creates the file with every option commented out, and once you close your editor it checks what you wrote. The file is `config.toml` in:
 
-- `~/.config/slackterm/` on Linux, and on macOS if you create it there;
-- `~/Library/Application Support/slackterm/` on macOS otherwise;
+- `~/.config/slackterm/` on Linux and macOS (on macOS, a file that versions before 0.3 wrote in `~/Library/Application Support/slackterm/` is still read there);
 - `%APPDATA%\slackterm\config\` on Windows;
 - `$XDG_CONFIG_HOME/slackterm/` wherever that variable is set.
 
@@ -243,7 +242,7 @@ The settings screen (`,`) changes these live and writes them to the file, keepin
 
 ```toml
 layout = "panels"   # panels | stream | focus
-theme = "night"     # night | light | gruvbox | nord
+theme = "night"     # night | light | gruvbox | nord, or one of yours (see Themes)
 accent = "theme"    # theme | amber | blue | lilac | green
 avatars = "images"  # images | initials | off
 clock = "24h"       # 24h | 12h
@@ -282,6 +281,29 @@ bg = "reset"        # the terminal's background, transparency included
 
 `slackterm config --default` lists them all: background, text, borders, links, unread counts, and the colors given to people.
 
+### Themes
+
+Your own themes go in the `themes` folder next to the config file, `~/.config/slackterm/themes/` on Linux and macOS: one TOML file per theme, named after it. A theme gives the colors of `[colors]`, and takes the others from `base`, one of the built-in themes:
+
+```toml
+# ~/.config/slackterm/themes/mocha.toml
+base = "night"
+bg = "#1e1e2e"
+fg = "#cdd6f4"
+accent = "#cba6f7"
+unread = "#f38ba8"
+nicks = ["#89b4fa", "#f5c2e7", "#a6e3a1", "#fab387", "#94e2d5"]
+```
+
+The settings screen (`,`) offers them after the built-in themes, and reads the folder again each time it opens, so a theme you are writing shows as soon as you save it; `theme = "mocha"` picks it in the config file. `[colors]` still applies on top.
+
+```sh
+slackterm theme new mocha --from nord   # a theme with every color of Nord, opened in your editor
+slackterm theme list                    # the themes, and where yours go
+```
+
+`slackterm demo` offers your themes too, to try them without a Slack account. A theme with a mistake is reported in the status bar and by `slackterm doctor`, with its line.
+
 Folded sections and the open tab are remembered separately, in `sidebar.toml`.
 
 ---
@@ -292,7 +314,7 @@ Folded sections and the open tab are remembered separately, in `sidebar.toml`.
 slackterm doctor
 ```
 
-checks what slackterm needs, one line each: what your terminal can show (pictures, Shift+Enter, notifications), the keychain, the session of every workspace, the config file, the browser for `login`, and mpv and yt-dlp for videos. Paste its output in a bug report.
+checks what slackterm needs, one line each: what your terminal can show (pictures, Shift+Enter, notifications), the keychain, the session of every workspace, the config file and your themes, the browser for `login`, and mpv and yt-dlp for videos. Paste its output in a bug report.
 
 The interface also writes `slackterm.log` (in `~/.local/share/slackterm/` on Linux, `~/Library/Application Support/slackterm/` on macOS), and keeps the previous run's as `slackterm.old.log` in case that one crashed. It holds what slackterm did — Slack methods called, real-time connection, errors — but never tokens, cookies or what people write. `--debug` adds every call to Slack; `SLACKTERM_LOG` sets any level, as `RUST_LOG` does.
 

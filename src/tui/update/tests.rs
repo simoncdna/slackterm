@@ -1939,3 +1939,26 @@ fn up_in_an_empty_message_box_edits_the_last_message() {
     assert_eq!(app.editing.as_ref().map(|e| e.ts.as_str()), Some("5.0"));
     assert_eq!(app.input.text(), "see you @hugo");
 }
+
+#[test]
+fn the_settings_offer_the_users_themes_after_the_built_in_ones() {
+    let mut app = loaded_app();
+    app.themes_dir = Some("/tmp/slackterm-test/themes".into());
+    app.themes = vec![crate::themes::UserTheme {
+        name: crate::config::ThemeName::named("mocha"),
+        base: crate::config::ThemeName::Night,
+        colors: crate::config::Colors::default(),
+    }];
+    // Read again each time, so that a theme just written shows.
+    assert_eq!(
+        update(&mut app, key(KeyCode::Char(','))),
+        [Command::LoadThemes]
+    );
+    update(&mut app, key(KeyCode::Char('j')));
+    let mut seen = Vec::new();
+    for _ in 0..5 {
+        update(&mut app, key(KeyCode::Char('l')));
+        seen.push(app.settings.theme.key());
+    }
+    assert_eq!(seen, ["light", "gruvbox", "nord", "mocha", "night"]);
+}

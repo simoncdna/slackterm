@@ -1,6 +1,7 @@
 use ratatui::style::Color;
 
 use crate::config::{Accent, ColorValue, Colors, Settings, ThemeName};
+use crate::themes::UserTheme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Theme {
@@ -111,9 +112,40 @@ const NORD: Theme = Theme {
 
 impl Theme {
     /// The theme and accent of the settings, under the colors of the config
-    /// file.
-    pub fn new(settings: &Settings, colors: &Colors) -> Self {
-        let mut theme = Self::from_settings(settings);
+    /// file. A theme of the user's starts from its base, with its colors.
+    pub fn new(settings: &Settings, themes: &[UserTheme], colors: &Colors) -> Self {
+        let user = match settings.theme {
+            ThemeName::Custom(_) => themes.iter().find(|t| t.name == settings.theme),
+            _ => None,
+        };
+        let base = user.map_or(settings.theme, |theme| theme.base);
+        let mut theme = Self::built_in(base);
+        if let Some(user) = user {
+            theme.paint(&user.colors);
+        }
+        theme.set_accent(settings.accent, base == ThemeName::Light);
+        theme.paint(colors);
+        theme
+    }
+
+    /// The theme and accent of the settings, without the user's colors.
+    pub fn from_settings(settings: &Settings) -> Self {
+        Self::new(settings, &[], &Colors::default())
+    }
+
+    /// A theme of the user's not found falls back to Night.
+    fn built_in(name: ThemeName) -> Self {
+        match name {
+            ThemeName::Night | ThemeName::Custom(_) => NIGHT,
+            ThemeName::Light => LIGHT,
+            ThemeName::Gruvbox => GRUVBOX,
+            ThemeName::Nord => NORD,
+        }
+    }
+
+    /// Replaces the colors `colors` gives.
+    fn paint(&mut self, colors: &Colors) {
+        let theme = self;
         let replaced = [
             (colors.bg, &mut theme.bg),
             (colors.surface, &mut theme.surface),
@@ -135,19 +167,11 @@ impl Theme {
         if let Some(nicks) = colors.nicks {
             theme.nicks = nicks.map(|ColorValue(color)| color);
         }
-        theme
     }
 
-    pub fn from_settings(settings: &Settings) -> Self {
-        let mut theme = match settings.theme {
-            ThemeName::Night => NIGHT,
-            ThemeName::Light => LIGHT,
-            ThemeName::Gruvbox => GRUVBOX,
-            ThemeName::Nord => NORD,
-        };
-        let light = settings.theme == ThemeName::Light;
+    fn set_accent(&mut self, accent: Accent, light: bool) {
         // Light backgrounds need darker accents to keep text readable.
-        let accent = match (settings.accent, light) {
+        let accent = match (accent, light) {
             (Accent::Theme, _) => None,
             (Accent::Amber, false) => Some(0xF0B35A),
             (Accent::Amber, true) => Some(0xA65A12),
@@ -159,9 +183,8 @@ impl Theme {
             (Accent::Green, true) => Some(0x2E7D4F),
         };
         if let Some(accent) = accent {
-            theme.accent = rgb(accent);
+            self.accent = rgb(accent);
         }
-        theme
     }
 
     /// A stable color per user, so a name keeps its color across messages.
@@ -197,10 +220,38 @@ mod tests {
             bg: Some(ColorValue(Color::Reset)),
             ..Colors::default()
         };
-        let theme = Theme::new(&settings, &colors);
+        let theme = Theme::new(&settings, &[], &colors);
         assert_eq!(theme.accent, Color::Red);
         assert_eq!(theme.bg, Color::Reset);
         assert_eq!(theme.fg, NIGHT.fg);
+    }
+
+    #[test]
+    fn a_theme_of_the_user_starts_from_its_base() {
+        let mocha = UserTheme {
+            name: ThemeName::named("mocha"),
+            base: ThemeName::Light,
+            colors: Colors {
+                bg: Some(ColorValue(Color::Black)),
+                fg: Some(ColorValue(Color::White)),
+                ..Colors::default()
+            },
+        };
+        let settings = Settings {
+            theme: ThemeName::named("mocha"),
+            ..Settings::default()
+        };
+        let mine = Colors {
+            fg: Some(ColorValue(Color::Yellow)),
+            ..Colors::default()
+        };
+        let theme = Theme::new(&settings, &[mocha], &mine);
+        assert_eq!(theme.bg, Color::Black);
+        assert_eq!(theme.fg, Color::Yellow);
+        assert_eq!(theme.link, LIGHT.link);
+
+        // Gone, it falls back to Night.
+        assert_eq!(Theme::new(&settings, &[], &Colors::default()), NIGHT);
     }
 
     #[test]
